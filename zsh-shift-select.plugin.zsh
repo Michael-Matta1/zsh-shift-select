@@ -43,6 +43,24 @@ function shift-select::deselect-and-input() {
 }
 zle -N shift-select::deselect-and-input
 
+# Copy the selected region to clipboard and deactivate selection.
+function shift-select::copy-region() {
+	if (( REGION_ACTIVE )); then
+		# If zsh has a selection, copy it
+		local start=$(( MARK < CURSOR ? MARK : CURSOR ))
+		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
+		local selected="${BUFFER:$start:$length}"
+		print -rn "$selected" | xclip -selection clipboard
+		zle deactivate-region -w
+		zle -K main
+	else
+		# No zsh selection - copy from X11 PRIMARY selection (mouse selection)
+		xclip -selection primary -o | xclip -selection clipboard
+	fi
+}
+zle -N shift-select::copy-region
+
+
 # If the selection region is not active, set the mark at the cursor position,
 # switch to the shift-select keymap, and call $WIDGET without 'shift-select::'
 # prefix. This function must be used only for shift-select::<widget> widgets.
@@ -93,7 +111,11 @@ function {
 	for	kcap   seq        widget (                          # key name
 		kdch1  '^[[3~'    shift-select::kill-region         # Delete
 		bs     '^?'       shift-select::kill-region         # Backspace
+		x      '^[[67;6u' shift-select::copy-region         # Ctrl+Shift+C
 	); do
 		bindkey -M shift-select ${terminfo[$kcap]:-$seq} $widget
 	done
+	
+	# Also bind Ctrl+Shift+C in emacs keymap for mouse selections
+	bindkey -M emacs '^[[67;6u' shift-select::copy-region
 }

@@ -3,6 +3,7 @@
 :gh-name: jirutka/{proj-name}
 // Enable kbd:[] macro
 :experimental:
+:toc: preamble
 
 Emacs https://www.gnu.org/software/emacs/manual/html_node/emacs/Shift-Selection.html[shift-select mode] for Zsh – select text in the command line using kbd:[Shift] as in many text editors, browsers and other GUI programs.
 
@@ -43,6 +44,92 @@ If you want to add custom key bindings to manipulate with active selection, defi
 
 TIP: You can use default kbd:[Alt + W] or kbd:[Ctrl + W] key bindings to copy (`copy-region-as-kill`) or cut (`backward-kill-word`) selected text to the “kill buffer”, and kbd:[Ctrl + Y] to paste (`yank`) the contents of the “kill buffer”.
 
+== Clipboard Integration
+
+This plugin includes optional clipboard integration that allows you to copy selected text (both shift-selected and mouse-selected) to the system clipboard using `xclip`.
+
+=== Prerequisites
+
+Install `xclip`:
+
+[source, sh]
+----
+# Debian/Ubuntu
+sudo apt install xclip
+
+# Arch Linux
+sudo pacman -S xclip
+
+# Fedora
+sudo dnf install xclip
+----
+
+=== Using Ctrl+Shift+C (Default)
+
+To use kbd:[Ctrl + Shift + C] for copying, add the following to your `kitty.conf`:
+
+[source]
+----
+map ctrl+shift+c send_text all \x1b[67;6u
+----
+
+This will allow you to:
+
+* Copy shift-selected text (selected with kbd:[Shift] + arrows)
+* Copy mouse-selected text
+* Use kbd:[Ctrl + C] for interrupt (default behavior)
+
+=== Using Ctrl+C for Copying (Reversed)
+
+If you prefer to use kbd:[Ctrl + C] for copying (like in GUI applications) and kbd:[Ctrl + Shift + C] for interrupt, add the following to your `kitty.conf`:
+
+[source]
+----
+# Ctrl+C sends the escape sequence for copying
+map ctrl+c send_text all \x1b[67;6u
+
+# Ctrl+Shift+C sends interrupt (default behavior)
+map ctrl+shift+c send_text all \x03
+----
+
+=== Other Terminals
+
+This approach works with any terminal emulator that supports key remapping, such as:
+
+* *Kitty* – as shown above
+* *WezTerm* – use similar key remapping in `wezterm.lua`
+* *Alacritty* – use key bindings in `alacritty.yml`
+
+NOTE: If you have any existing mapping for kbd:[Ctrl + Shift + C] in your `kitty.conf` (such as `map ctrl+shift+c copy_to_clipboard`), you must remove or comment it out first, as it will conflict with this configuration.
+
+=== Alternative: Without Terminal Remapping
+
+If your terminal doesn't support key remapping, you can add the following to your `$ZDOTDIR/.zshrc` (by default `~/.zshrc`) to use kbd:[Ctrl + /] for copying:
+
+[source, sh]
+----
+x-copy-selection () {
+  if [[ $MARK -ne $CURSOR ]]; then
+    local start=$(( MARK < CURSOR ? MARK : CURSOR ))
+    local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
+    local selected="${BUFFER:$start:$length}"
+    print -rn "$selected" | xclip -selection clipboard
+  fi
+}
+zle -N x-copy-selection
+bindkey '^_' x-copy-selection
+----
+
+You can change the keybinding to any key you prefer. For example, to use kbd:[Ctrl + K] instead:
+
+[source, sh]
+----
+bindkey '^K' x-copy-selection
+----
+
+NOTE: The `^_` sequence represents kbd:[Ctrl + /] (Ctrl + Slash), and `^K` represents kbd:[Ctrl + K]. You can find other key sequences by running `cat` in your terminal and pressing the desired key combination.
+
+TIP: The manual keybinding approach has an additional feature: if no text is selected, it will copy the entire current line to the clipboard.
 
 == Terminals Compatibility
 
