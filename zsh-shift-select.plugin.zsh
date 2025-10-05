@@ -63,7 +63,7 @@ zle -N shift-select::copy-region
 # Cut the selected region to clipboard and delete it.
 function shift-select::cut-region() {
 	if (( REGION_ACTIVE )); then
-		# If zsh has a selection, cut it
+		# If zsh has a selection, cut it (copy and delete)
 		local start=$(( MARK < CURSOR ? MARK : CURSOR ))
 		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
 		local selected="${BUFFER:$start:$length}"
@@ -72,8 +72,25 @@ function shift-select::cut-region() {
 		zle kill-region -w
 		zle -K main
 	else
-		# No zsh selection - copy from X11 PRIMARY selection
-		xclip -selection primary -o | xclip -selection clipboard
+		# No zsh selection - try to cut mouse selection from buffer
+		local mouse_sel=$(xclip -selection primary -o 2>/dev/null)
+		if [[ -n "$mouse_sel" ]]; then
+			# Copy to clipboard
+			print -rn "$mouse_sel" | xclip -selection clipboard
+			
+			# Try to find and delete it from the buffer
+			if [[ "$BUFFER" == *"$mouse_sel"* ]]; then
+				# Find the position of the selected text in buffer
+				local before="${BUFFER%%$mouse_sel*}"
+				local after="${BUFFER#*$mouse_sel}"
+				
+				# Reconstruct buffer without the selected text
+				BUFFER="${before}${after}"
+				
+				# Position cursor where the deletion happened
+				CURSOR=${#before}
+			fi
+		fi
 	fi
 }
 zle -N shift-select::cut-region
@@ -138,4 +155,7 @@ function {
 	# Also bind Ctrl+Shift+C and Ctrl+X in emacs keymap for mouse selections
 	bindkey -M emacs '^[[67;6u' shift-select::copy-region
 	bindkey -M emacs '^X' shift-select::cut-region
+	
+	# Ensure Ctrl+X is bound in main keymap as well
+	bindkey '^X' shift-select::cut-region
 }
