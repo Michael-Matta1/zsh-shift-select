@@ -60,6 +60,24 @@ function shift-select::copy-region() {
 }
 zle -N shift-select::copy-region
 
+# Cut the selected region to clipboard and delete it.
+function shift-select::cut-region() {
+	if (( REGION_ACTIVE )); then
+		# If zsh has a selection, cut it
+		local start=$(( MARK < CURSOR ? MARK : CURSOR ))
+		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
+		local selected="${BUFFER:$start:$length}"
+		print -rn "$selected" | xclip -selection clipboard
+		# Delete the selected text
+		zle kill-region -w
+		zle -K main
+	else
+		# No zsh selection - copy from X11 PRIMARY selection
+		xclip -selection primary -o | xclip -selection clipboard
+	fi
+}
+zle -N shift-select::cut-region
+
 
 # If the selection region is not active, set the mark at the cursor position,
 # switch to the shift-select keymap, and call $WIDGET without 'shift-select::'
@@ -112,10 +130,12 @@ function {
 		kdch1  '^[[3~'    shift-select::kill-region         # Delete
 		bs     '^?'       shift-select::kill-region         # Backspace
 		x      '^[[67;6u' shift-select::copy-region         # Ctrl+Shift+C
+		x      '^X'       shift-select::cut-region          # Ctrl+X
 	); do
 		bindkey -M shift-select ${terminfo[$kcap]:-$seq} $widget
 	done
 	
-	# Also bind Ctrl+Shift+C in emacs keymap for mouse selections
+	# Also bind Ctrl+Shift+C and Ctrl+X in emacs keymap for mouse selections
 	bindkey -M emacs '^[[67;6u' shift-select::copy-region
+	bindkey -M emacs '^X' shift-select::cut-region
 }
