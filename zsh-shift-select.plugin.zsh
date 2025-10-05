@@ -43,6 +43,19 @@ function shift-select::deselect-and-input() {
 }
 zle -N shift-select::deselect-and-input
 
+# Replace selection with typed character (like text editors)
+function shift-select::replace-selection() {
+	if (( REGION_ACTIVE )); then
+		# Delete the selected text
+		zle kill-region -w
+	fi
+	# Switch back to main keymap
+	zle -K main
+	# Insert the typed character
+	zle -U "$KEYS"
+}
+zle -N shift-select::replace-selection
+
 # Copy the selected region to clipboard and deactivate selection.
 function shift-select::copy-region() {
 	if (( REGION_ACTIVE )); then
@@ -116,6 +129,9 @@ function {
 	# Bind all possible key sequences to deselect-and-input, i.e. it will be used
 	# as a fallback for "unbound" key sequences.
 	bindkey -M shift-select -R '^@'-'^?' shift-select::deselect-and-input
+	
+	# Override printable characters (space to ~) to replace selection instead
+	bindkey -M shift-select -R ' '-'~' shift-select::replace-selection
 
 	local kcap seq seq_mac widget
 

@@ -35,6 +35,14 @@ image::media/demo.gif[Example of using zsh-shift-select]
 [[macos, ]]
 _^^ The last four actions use kbd:[Shift + Option] instead of kbd:[Shift + Ctrl] on macOS._
 
+== Editing Behavior
+
+In addition to selection, this plugin supports common text editor behaviors:
+
+* kbd:[Ctrl + X] – cuts the selected text (works for both shift-selected and mouse-selected text).
+* Typing while text is selected with kbd:[Shift + arrows] – replaces the selected text with the typed input (instead of appending at the end of the line)
+
+
 
 === List of keys defined in the `shift-select` keymap only:
 
