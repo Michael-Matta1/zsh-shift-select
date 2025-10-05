@@ -31,6 +31,7 @@ image::media/demo.gif[Example of using zsh-shift-select]
 * kbd:[Shift + Ctrl + Right Arrow] ^<<macos>>^ – select to the end of a word
 * kbd:[Shift + Ctrl + Home] ^<<macos>>^ – select to the beginning of an input buffer
 * kbd:[Shift + Ctrl + End] ^<<macos>>^ – select to the end of an input buffer
+* kbd:[Ctrl + A] – select all text in the buffer (including multi-line commands)
 
 [[macos, ]]
 _^^ The last four actions use kbd:[Shift + Option] instead of kbd:[Shift + Ctrl] on macOS._

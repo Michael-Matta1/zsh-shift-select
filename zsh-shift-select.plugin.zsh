@@ -24,6 +24,15 @@ function beginning-of-buffer() {
 }
 zle -N beginning-of-buffer
 
+# Select all text in the buffer (Ctrl+A)
+function shift-select::select-all() {
+	MARK=0
+	CURSOR=${#BUFFER}
+	REGION_ACTIVE=1
+	zle -K shift-select
+}
+zle -N shift-select::select-all
+
 # Kill the selected region and switch back to the main keymap.
 function shift-select::kill-region() {
 	zle kill-region -w
@@ -167,6 +176,9 @@ function {
 	); do
 		bindkey -M shift-select ${terminfo[$kcap]:-$seq} $widget
 	done
+	
+	# Bind Ctrl+A to select all in emacs keymap
+	bindkey -M emacs '^A' shift-select::select-all
 	
 	# Also bind Ctrl+Shift+C and Ctrl+X in emacs keymap for mouse selections
 	bindkey -M emacs '^[[67;6u' shift-select::copy-region
