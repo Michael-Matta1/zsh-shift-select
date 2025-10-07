@@ -2,6 +2,8 @@
 
 Emacs [shift-select mode](https://www.gnu.org/software/emacs/manual/html_node/emacs/Shift-Selection.html) for Zsh — select text in the command line using Shift as in many text editors, browsers and other GUI programs. Features **full editor-like experience** with type-to-replace, paste-replace, and seamless **mouse selection integration** that works alongside keyboard
 
+![Demo](media/demo.gif)
+
 ---
 
 ## Table of Contents
@@ -56,6 +58,8 @@ Type while text is selected to replace it automatically:
 -   ✅ Works with **keyboard selections** (Shift + arrows)
 -   ✅ Works with **mouse selections** (highlight text with your mouse, then type)
 -   ✅ Seamlessly handles **multiple windows/splits** within the same terminal
+
+> **⚠️ Important Note on Mouse Selection:** If your command contains multiple occurrences of the same exact selected text, mouse selection will replace the **first occurrence** found in the buffer, not necessarily the one you visually selected. For more reliable text replacement, especially with duplicate text, it's recommended to use **Shift + Arrow keys** for selection instead of mouse selection and using the mouse replacement with caution.
 
 ### Paste-Replace
 
