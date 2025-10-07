@@ -8,6 +8,57 @@
 # Version: 0.1.1
 # Homepage: <https://github.com/jirutka/zsh-shift-select>
 
+# Detect clipboard tool based on display server
+typeset -g _SHIFT_SELECT_CLIPBOARD_CMD
+typeset -g _SHIFT_SELECT_PRIMARY_CMD
+
+function shift-select::detect-clipboard() {
+	if command -v wl-copy &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
+		# Wayland
+		_SHIFT_SELECT_CLIPBOARD_CMD="wl-copy"
+		_SHIFT_SELECT_PRIMARY_CMD="wl-copy --primary"
+	elif command -v xclip &>/dev/null && [[ -n "$DISPLAY" ]]; then
+		# X11
+		_SHIFT_SELECT_CLIPBOARD_CMD="xclip -selection clipboard"
+		_SHIFT_SELECT_PRIMARY_CMD="xclip -selection primary -o"
+	else
+		# Fallback: no clipboard support
+		_SHIFT_SELECT_CLIPBOARD_CMD=""
+		_SHIFT_SELECT_PRIMARY_CMD=""
+	fi
+}
+
+# Get text from primary selection (mouse selection)
+function shift-select::get-primary() {
+	if [[ -z "$_SHIFT_SELECT_PRIMARY_CMD" ]]; then
+		echo ""
+		return 1
+	fi
+	
+	if [[ "$_SHIFT_SELECT_PRIMARY_CMD" == wl-copy* ]]; then
+		wl-paste --primary 2>/dev/null
+	else
+		xclip -selection primary -o 2>/dev/null
+	fi
+}
+
+# Copy text to clipboard
+function shift-select::copy-to-clipboard() {
+	local text="$1"
+	if [[ -z "$_SHIFT_SELECT_CLIPBOARD_CMD" ]]; then
+		return 1
+	fi
+	
+	if [[ "$_SHIFT_SELECT_CLIPBOARD_CMD" == wl-copy* ]]; then
+		print -rn "$text" | wl-copy
+	else
+		print -rn "$text" | xclip -selection clipboard
+	fi
+}
+
+# Initialize clipboard detection
+shift-select::detect-clipboard
+
 # Move cursor to the end of the buffer.
 # This is an alternative to builtin end-of-buffer-or-history.
 function end-of-buffer() {
@@ -72,12 +123,15 @@ function shift-select::copy-region() {
 		local start=$(( MARK < CURSOR ? MARK : CURSOR ))
 		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
 		local selected="${BUFFER:$start:$length}"
-		print -rn "$selected" | xclip -selection clipboard
+		shift-select::copy-to-clipboard "$selected"
 		zle deactivate-region -w
 		zle -K main
 	else
-		# No zsh selection - copy from X11 PRIMARY selection (mouse selection)
-		xclip -selection primary -o | xclip -selection clipboard
+		# No zsh selection - copy from PRIMARY to clipboard
+		local primary_sel=$(shift-select::get-primary)
+		if [[ -n "$primary_sel" ]]; then
+			shift-select::copy-to-clipboard "$primary_sel"
+		fi
 	fi
 }
 zle -N shift-select::copy-region
@@ -89,16 +143,16 @@ function shift-select::cut-region() {
 		local start=$(( MARK < CURSOR ? MARK : CURSOR ))
 		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
 		local selected="${BUFFER:$start:$length}"
-		print -rn "$selected" | xclip -selection clipboard
+		shift-select::copy-to-clipboard "$selected"
 		# Delete the selected text
 		zle kill-region -w
 		zle -K main
 	else
 		# No zsh selection - try to cut mouse selection from buffer
-		local mouse_sel=$(xclip -selection primary -o 2>/dev/null)
+		local mouse_sel=$(shift-select::get-primary)
 		if [[ -n "$mouse_sel" ]]; then
 			# Copy to clipboard
-			print -rn "$mouse_sel" | xclip -selection clipboard
+			shift-select::copy-to-clipboard "$mouse_sel"
 			
 			# Try to find and delete it from the buffer
 			if [[ "$BUFFER" == *"$mouse_sel"* ]]; then
