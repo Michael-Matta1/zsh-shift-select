@@ -19,7 +19,7 @@ function shift-select::detect-clipboard() {
 	if command -v wl-copy &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
 		# Wayland
 		_SHIFT_SELECT_CLIPBOARD_CMD="wl-copy"
-		_SHIFT_SELECT_PRIMARY_CMD="wl-copy --primary"
+		_SHIFT_SELECT_PRIMARY_CMD="wl-paste --primary"
 	elif command -v xclip &>/dev/null && [[ -n "$DISPLAY" ]]; then
 		# X11
 		_SHIFT_SELECT_CLIPBOARD_CMD="xclip -selection clipboard"
@@ -34,15 +34,37 @@ function shift-select::detect-clipboard() {
 # Get text from primary selection (mouse selection)
 function shift-select::get-primary() {
 	if [[ -z "$_SHIFT_SELECT_PRIMARY_CMD" ]]; then
-		echo ""
 		return 1
 	fi
-	
-	if [[ "$_SHIFT_SELECT_PRIMARY_CMD" == wl-copy* ]]; then
-		wl-paste --primary 2>/dev/null
+	local result
+	if [[ "$_SHIFT_SELECT_PRIMARY_CMD" == wl-paste* ]]; then
+		result=$(wl-paste --primary 2>/dev/null)
 	else
-		xclip -selection primary -o 2>/dev/null
+		result=$(xclip -selection primary -o 2>/dev/null)
 	fi
+	if [[ -n "$result" ]]; then
+		echo "$result"
+		return 0
+	fi
+	return 1
+}
+
+# Get text from clipboard
+function shift-select::get-clipboard() {
+	if [[ -z "$_SHIFT_SELECT_CLIPBOARD_CMD" ]]; then
+		return 1
+	fi
+	local result
+	if [[ "$_SHIFT_SELECT_CLIPBOARD_CMD" == wl-copy* ]]; then
+		result=$(wl-paste 2>/dev/null)
+	else
+		result=$(xclip -selection clipboard -o 2>/dev/null)
+	fi
+	if [[ -n "$result" ]]; then
+		echo "$result"
+		return 0
+	fi
+	return 1
 }
 
 # Copy text to clipboard
@@ -55,7 +77,7 @@ function shift-select::copy-to-clipboard() {
 	if [[ "$_SHIFT_SELECT_CLIPBOARD_CMD" == wl-copy* ]]; then
 		print -rn "$text" | wl-copy
 	else
-		print -rn "$text" | xclip -selection clipboard
+		print -rn "$text" | xclip -selection clipboard -in
 	fi
 }
 
@@ -232,6 +254,38 @@ function shift-select::cut-region() {
 }
 zle -N shift-select::cut-region
 
+# Custom bracketed paste that replaces selected text
+function shift-select::bracketed-paste-replace() {
+	# Check if there's an active keyboard selection
+	if (( REGION_ACTIVE )); then
+		# Delete the selected region first
+		zle kill-region -w
+		REGION_ACTIVE=0
+		zle -K main
+	fi
+	# Now perform the default bracketed paste at the current cursor position
+	zle .bracketed-paste
+}
+zle -N shift-select::bracketed-paste-replace
+
+# Manual paste function for Ctrl+V
+function shift-select::paste-clipboard() {
+	# Check if there's an active keyboard selection
+	if (( REGION_ACTIVE )); then
+		# Delete the selected region first
+		zle kill-region -w
+		REGION_ACTIVE=0
+		zle -K main
+	fi
+	
+	# Get clipboard content and insert it
+	local clipboard_content=$(shift-select::get-clipboard)
+	if [[ -n "$clipboard_content" ]]; then
+		LBUFFER="${LBUFFER}${clipboard_content}"
+	fi
+}
+zle -N shift-select::paste-clipboard
+
 
 # If the selection region is not active, set the mark at the cursor position,
 # switch to the shift-select keymap, and call $WIDGET without 'shift-select::'
@@ -291,6 +345,7 @@ function {
 		bs     '^?'       shift-select::kill-region         # Backspace
 		x      '^[[67;6u' shift-select::copy-region         # Ctrl+Shift+C
 		x      '^X'       shift-select::cut-region          # Ctrl+X
+		x      '^V'       shift-select::paste-clipboard     # Ctrl+V
 	); do
 		bindkey -M shift-select ${terminfo[$kcap]:-$seq} $widget
 	done
@@ -298,10 +353,17 @@ function {
 	# Bind Ctrl+A to select all in emacs keymap
 	bindkey -M emacs '^A' shift-select::select-all
 	
+	# Bind Ctrl+V for paste in emacs keymap
+	bindkey -M emacs '^V' shift-select::paste-clipboard
+	
 	# Also bind Ctrl+Shift+C and Ctrl+X in emacs keymap for mouse selections
 	bindkey -M emacs '^[[67;6u' shift-select::copy-region
 	bindkey -M emacs '^X' shift-select::cut-region
 	
 	# Ensure Ctrl+X is bound in main keymap as well
 	bindkey '^X' shift-select::cut-region
+	
+	# Override the default bracketed-paste widget to handle paste-replace
+	bindkey -M emacs '^[[200~' shift-select::bracketed-paste-replace
+	bindkey -M shift-select '^[[200~' shift-select::bracketed-paste-replace
 }
