@@ -262,6 +262,18 @@ function shift-select::bracketed-paste-replace() {
 		zle kill-region -w
 		REGION_ACTIVE=0
 		zle -K main
+	else
+		# Check for mouse selection in PRIMARY
+		local mouse_sel=$(shift-select::get-primary)
+		if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* ]]; then
+			# Find and delete the mouse-selected text from buffer
+			local before="${BUFFER%%$mouse_sel*}"
+			local after="${BUFFER#*$mouse_sel}"
+			BUFFER="${before}${after}"
+			CURSOR=${#before}
+			# Mark this selection as processed
+			_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+		fi
 	fi
 	# Now perform the default bracketed paste at the current cursor position
 	zle .bracketed-paste
@@ -276,6 +288,18 @@ function shift-select::paste-clipboard() {
 		zle kill-region -w
 		REGION_ACTIVE=0
 		zle -K main
+	else
+		# Check for mouse selection in PRIMARY
+		local mouse_sel=$(shift-select::get-primary)
+		if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* ]]; then
+			# Find and delete the mouse-selected text from buffer
+			local before="${BUFFER%%$mouse_sel*}"
+			local after="${BUFFER#*$mouse_sel}"
+			BUFFER="${before}${after}"
+			CURSOR=${#before}
+			# Mark this selection as processed
+			_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+		fi
 	fi
 	
 	# Get clipboard content and insert it
