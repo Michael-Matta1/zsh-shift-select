@@ -140,10 +140,22 @@ zle -N shift-select::replace-selection
 
 # Check for mouse selection and handle character input
 function shift-select::handle-char() {
+	# If the buffer has changed since last check, update our tracking
+	# This prevents replacing pasted content
+	if [[ "$BUFFER" != "$_SHIFT_SELECT_LAST_BUFFER" ]]; then
+		_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
+		# Reset the primary tracking when buffer changes externally (paste, etc)
+		local current_primary=$(shift-select::get-primary)
+		if [[ -n "$current_primary" ]]; then
+			_SHIFT_SELECT_LAST_PRIMARY="$current_primary"
+		fi
+	fi
+	
 	# Check for mouse selection in PRIMARY
 	local mouse_sel=$(shift-select::get-primary)
 	
 	# Only replace if we have a new selection (different from last one we processed)
+	# AND the buffer hasn't changed since the last character was typed
 	if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" && "$BUFFER" == *"$mouse_sel"* ]]; then
 		# Mark that we've seen and processed this selection
 		_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
@@ -157,6 +169,9 @@ function shift-select::handle-char() {
 	
 	# Insert the typed character
 	zle self-insert -w
+	
+	# Update buffer tracking after character insertion
+	_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
 }
 zle -N shift-select::handle-char
 
