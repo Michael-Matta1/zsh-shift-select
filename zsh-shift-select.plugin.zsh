@@ -11,6 +11,8 @@
 # Detect clipboard tool based on display server
 typeset -g _SHIFT_SELECT_CLIPBOARD_CMD
 typeset -g _SHIFT_SELECT_PRIMARY_CMD
+typeset -g _SHIFT_SELECT_LAST_PRIMARY=""
+typeset -g _SHIFT_SELECT_PRIMARY_ACTIVE=0
 
 function shift-select::detect-clipboard() {
 	if command -v wl-copy &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
@@ -106,15 +108,53 @@ zle -N shift-select::deselect-and-input
 # Replace selection with typed character (like text editors)
 function shift-select::replace-selection() {
 	if (( REGION_ACTIVE )); then
-		# Delete the selected text
+		# Delete the keyboard-selected text
 		zle kill-region -w
+		# Switch back to main keymap and insert character
+		zle -K main
+		zle -U "$KEYS"
+		return
 	fi
-	# Switch back to main keymap
-	zle -K main
-	# Insert the typed character
-	zle -U "$KEYS"
+	
+	# Check for mouse selection in PRIMARY
+	local mouse_sel=$(shift-select::get-primary)
+	if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* ]]; then
+		# Find and delete the mouse-selected text from buffer
+		local before="${BUFFER%%$mouse_sel*}"
+		local after="${BUFFER#*$mouse_sel}"
+		BUFFER="${before}${after}"
+		CURSOR=${#before}
+		# Insert the typed character at cursor position
+		zle -U "$KEYS"
+		return
+	fi
+	
+	# No selection found - just insert the character normally
+	zle self-insert -w
 }
 zle -N shift-select::replace-selection
+
+# Check for mouse selection and handle character input
+function shift-select::handle-char() {
+	# Check for mouse selection in PRIMARY
+	local mouse_sel=$(shift-select::get-primary)
+	
+	# Only replace if we have a new selection (different from last one we processed)
+	if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" && "$BUFFER" == *"$mouse_sel"* ]]; then
+		# Mark that we've seen and processed this selection
+		_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+		
+		# Find and delete the mouse-selected text from buffer
+		local before="${BUFFER%%$mouse_sel*}"
+		local after="${BUFFER#*$mouse_sel}"
+		BUFFER="${before}${after}"
+		CURSOR=${#before}
+	fi
+	
+	# Insert the typed character
+	zle self-insert -w
+}
+zle -N shift-select::handle-char
 
 # Copy the selected region to clipboard and deactivate selection.
 function shift-select::copy-region() {
@@ -195,6 +235,9 @@ function {
 	
 	# Override printable characters (space to ~) to replace selection instead
 	bindkey -M shift-select -R ' '-'~' shift-select::replace-selection
+	
+	# Bind printable characters in emacs keymap to handle mouse selections
+	bindkey -M emacs -R ' '-'~' shift-select::handle-char
 
 	local kcap seq seq_mac widget
 
