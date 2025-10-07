@@ -13,6 +13,7 @@ typeset -g _SHIFT_SELECT_CLIPBOARD_CMD
 typeset -g _SHIFT_SELECT_PRIMARY_CMD
 typeset -g _SHIFT_SELECT_LAST_PRIMARY=""
 typeset -g _SHIFT_SELECT_PRIMARY_ACTIVE=0
+typeset -g _SHIFT_SELECT_LAST_BUFFER=""
 
 function shift-select::detect-clipboard() {
 	if command -v wl-copy &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
@@ -116,9 +117,12 @@ function shift-select::replace-selection() {
 		return
 	fi
 	
-	# Check for mouse selection in PRIMARY
+	# Check for mouse selection in PRIMARY (only if it's new)
 	local mouse_sel=$(shift-select::get-primary)
-	if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* ]]; then
+	if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" && "$BUFFER" == *"$mouse_sel"* ]]; then
+		# Mark that we've processed this selection
+		_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+		
 		# Find and delete the mouse-selected text from buffer
 		local before="${BUFFER%%$mouse_sel*}"
 		local after="${BUFFER#*$mouse_sel}"
@@ -171,6 +175,8 @@ function shift-select::copy-region() {
 		local primary_sel=$(shift-select::get-primary)
 		if [[ -n "$primary_sel" ]]; then
 			shift-select::copy-to-clipboard "$primary_sel"
+			# Clear the tracking variable so this selection won't be auto-replaced
+			_SHIFT_SELECT_LAST_PRIMARY="$primary_sel"
 		fi
 	fi
 }
