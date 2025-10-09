@@ -1,20 +1,21 @@
 # vim: set ts=4:
 # Copyright 2022-present Jakub Jirutka <jakub@jirutka.cz>.
+# Copyright 2024-present Michael Matta.
 # SPDX-License-Identifier: MIT
 #
 # Emacs shift-select mode for Zsh - select text in the command line using Shift
 # as in many text editors, browsers and other GUI programs.
 #
-# Version: 0.1.1
-# Homepage: <https://github.com/jirutka/zsh-shift-select>
+# Version: 0.2.0
+# Homepage: <https://github.com/Michael-Matta1/zsh-shift-select>
+# Original: <https://github.com/jirutka/zsh-shift-select>
 
 # Detect clipboard tool based on display server
 typeset -g _SHIFT_SELECT_CLIPBOARD_CMD
 typeset -g _SHIFT_SELECT_PRIMARY_CMD
 typeset -g _SHIFT_SELECT_LAST_PRIMARY=""
-typeset -g _SHIFT_SELECT_PRIMARY_ACTIVE=0
+typeset -g _SHIFT_SELECT_ACTIVE_SELECTION=""
 typeset -g _SHIFT_SELECT_LAST_BUFFER=""
-typeset -g _SHIFT_SELECT_KEYBOARD_COPY=0
 
 function shift-select::detect-clipboard() {
 	if command -v wl-copy &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
@@ -117,6 +118,35 @@ function shift-select::kill-region() {
 }
 zle -N shift-select::kill-region
 
+# Delete mouse selection or perform normal backspace
+function shift-select::delete-mouse-or-backspace() {
+	local mouse_sel=$(shift-select::get-primary)
+	
+	# Check if PRIMARY has changed (new selection was made)
+	if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
+		# This is a NEW selection - mark it as active
+		_SHIFT_SELECT_ACTIVE_SELECTION="$mouse_sel"
+		_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+	fi
+	
+	# Only delete if we have an ACTIVE mouse selection that exists in the buffer
+	if [[ -n "$_SHIFT_SELECT_ACTIVE_SELECTION" && "$BUFFER" == *"$_SHIFT_SELECT_ACTIVE_SELECTION"* ]]; then
+		# Find and delete the mouse-selected text from buffer
+		local before="${BUFFER%%$_SHIFT_SELECT_ACTIVE_SELECTION*}"
+		local after="${BUFFER#*$_SHIFT_SELECT_ACTIVE_SELECTION}"
+		BUFFER="${before}${after}"
+		CURSOR=${#before}
+		# Clear the active selection after deleting
+		_SHIFT_SELECT_ACTIVE_SELECTION=""
+		_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
+		return
+	fi
+	
+	# No active mouse selection - perform normal backspace
+	zle backward-delete-char -w
+}
+zle -N shift-select::delete-mouse-or-backspace
+
 # Deactivate the selection region, switch back to the main keymap and process
 # the typed keys again.
 function shift-select::deselect-and-input() {
@@ -140,52 +170,32 @@ function shift-select::replace-selection() {
 		return
 	fi
 	
-	# Check for mouse selection in PRIMARY (only if it's new)
-	local mouse_sel=$(shift-select::get-primary)
-	if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" && "$BUFFER" == *"$mouse_sel"* ]]; then
-		# Mark that we've processed this selection
-		_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
-		
-		# Find and delete the mouse-selected text from buffer
-		local before="${BUFFER%%$mouse_sel*}"
-		local after="${BUFFER#*$mouse_sel}"
-		BUFFER="${before}${after}"
-		CURSOR=${#before}
-		# Insert the typed character at cursor position
-		zle -U "$KEYS"
-		return
-	fi
-	
-	# No selection found - just insert the character normally
+	# No selection - just insert character normally
 	zle self-insert -w
 }
 zle -N shift-select::replace-selection
 
 # Check for mouse selection and handle character input
+# This detects fresh mouse selections and replaces them when typing
 function shift-select::handle-char() {
-	# If the buffer has changed since last check, update our tracking
-	if [[ "$BUFFER" != "$_SHIFT_SELECT_LAST_BUFFER" ]]; then
-		_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
-	fi
-	
-	# Check for mouse selection in PRIMARY
 	local mouse_sel=$(shift-select::get-primary)
 	
-	# Only replace if:
-	# 1. We have a selection that matches what was last copied
-	# 2. It's in the buffer
-	# 3. It's different from last one we processed
-	if [[ -n "$mouse_sel" && -n "$_SHIFT_SELECT_LAST_PRIMARY" && "$mouse_sel" == "$_SHIFT_SELECT_LAST_PRIMARY" && "$BUFFER" == *"$mouse_sel"* ]]; then
-		# This is a recently copied selection, so replace it
-		
+	# Check if PRIMARY has changed (new selection was made)
+	if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
+		# This is a NEW selection - mark it as active
+		_SHIFT_SELECT_ACTIVE_SELECTION="$mouse_sel"
+		_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+	fi
+	
+	# Check if we have an ACTIVE mouse selection that exists in buffer
+	if [[ -n "$_SHIFT_SELECT_ACTIVE_SELECTION" && "$BUFFER" == *"$_SHIFT_SELECT_ACTIVE_SELECTION"* ]]; then
 		# Find and delete the mouse-selected text from buffer
-		local before="${BUFFER%%$mouse_sel*}"
-		local after="${BUFFER#*$mouse_sel}"
+		local before="${BUFFER%%$_SHIFT_SELECT_ACTIVE_SELECTION*}"
+		local after="${BUFFER#*$_SHIFT_SELECT_ACTIVE_SELECTION}"
 		BUFFER="${before}${after}"
 		CURSOR=${#before}
-		
-		# Clear tracking after replacement
-		_SHIFT_SELECT_LAST_PRIMARY=""
+		# Clear the active selection after replacing it ONCE
+		_SHIFT_SELECT_ACTIVE_SELECTION=""
 	fi
 	
 	# Insert the typed character
@@ -196,6 +206,25 @@ function shift-select::handle-char() {
 }
 zle -N shift-select::handle-char
 
+# Monitor PRIMARY selection changes to track active selections
+function shift-select::update-active-selection() {
+	local current_primary=$(shift-select::get-primary)
+	
+	# Update last known PRIMARY value for reference
+	if [[ -n "$current_primary" ]]; then
+		_SHIFT_SELECT_LAST_PRIMARY="$current_primary"
+	fi
+}
+
+# Hook that runs on every ZLE widget call
+function shift-select::zle-line-pre-redraw() {
+	shift-select::update-active-selection
+}
+
+# Register the hook
+autoload -Uz add-zle-hook-widget
+add-zle-hook-widget line-pre-redraw shift-select::zle-line-pre-redraw
+
 # Copy the selected region to clipboard and deactivate selection.
 function shift-select::copy-region() {
 	if (( REGION_ACTIVE )); then
@@ -204,9 +233,8 @@ function shift-select::copy-region() {
 		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
 		local selected="${BUFFER:$start:$length}"
 		shift-select::copy-to-clipboard "$selected"
-		# Mark that this was a keyboard copy
-		_SHIFT_SELECT_KEYBOARD_COPY=1
 		_SHIFT_SELECT_LAST_PRIMARY="$selected"
+		_SHIFT_SELECT_ACTIVE_SELECTION=""
 		zle deactivate-region -w
 		zle -K main
 	else
@@ -214,9 +242,9 @@ function shift-select::copy-region() {
 		local primary_sel=$(shift-select::get-primary)
 		if [[ -n "$primary_sel" ]]; then
 			shift-select::copy-to-clipboard "$primary_sel"
-			# This was a mouse copy
-			_SHIFT_SELECT_KEYBOARD_COPY=0
 			_SHIFT_SELECT_LAST_PRIMARY="$primary_sel"
+			# After manual copy, clear active selection so it won't be auto-replaced
+			_SHIFT_SELECT_ACTIVE_SELECTION=""
 		fi
 	fi
 }
@@ -230,33 +258,33 @@ function shift-select::cut-region() {
 		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
 		local selected="${BUFFER:$start:$length}"
 		shift-select::copy-to-clipboard "$selected"
-		# Mark that this was a keyboard cut
-		_SHIFT_SELECT_KEYBOARD_COPY=1
 		_SHIFT_SELECT_LAST_PRIMARY="$selected"
+		_SHIFT_SELECT_ACTIVE_SELECTION=""
 		# Delete the selected text
 		zle kill-region -w
 		zle -K main
 	else
 		# No zsh selection - try to cut mouse selection from buffer
 		local mouse_sel=$(shift-select::get-primary)
-		if [[ -n "$mouse_sel" ]]; then
+		
+		# Check if PRIMARY has changed (new selection was made)
+		if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
+			_SHIFT_SELECT_ACTIVE_SELECTION="$mouse_sel"
+			_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+		fi
+		
+		if [[ -n "$_SHIFT_SELECT_ACTIVE_SELECTION" && "$BUFFER" == *"$_SHIFT_SELECT_ACTIVE_SELECTION"* ]]; then
 			# Copy to clipboard
-			shift-select::copy-to-clipboard "$mouse_sel"
-			# This was a mouse cut
-			_SHIFT_SELECT_KEYBOARD_COPY=0
+			shift-select::copy-to-clipboard "$_SHIFT_SELECT_ACTIVE_SELECTION"
 			
-			# Try to find and delete it from the buffer
-			if [[ "$BUFFER" == *"$mouse_sel"* ]]; then
-				# Find the position of the selected text in buffer
-				local before="${BUFFER%%$mouse_sel*}"
-				local after="${BUFFER#*$mouse_sel}"
-				
-				# Reconstruct buffer without the selected text
-				BUFFER="${before}${after}"
-				
-				# Position cursor where the deletion happened
-				CURSOR=${#before}
-			fi
+			# Find and delete it from the buffer
+			local before="${BUFFER%%$_SHIFT_SELECT_ACTIVE_SELECTION*}"
+			local after="${BUFFER#*$_SHIFT_SELECT_ACTIVE_SELECTION}"
+			BUFFER="${before}${after}"
+			CURSOR=${#before}
+			
+			# Clear active selection
+			_SHIFT_SELECT_ACTIVE_SELECTION=""
 		fi
 	fi
 }
@@ -270,31 +298,33 @@ function shift-select::bracketed-paste-replace() {
 		zle kill-region -w
 		REGION_ACTIVE=0
 		zle -K main
-	elif (( !_SHIFT_SELECT_KEYBOARD_COPY )); then
-		# Only check for mouse selection if the last copy wasn't from keyboard
-		local clipboard_content=$(shift-select::get-clipboard)
+	else
+		# Check for fresh mouse selection
 		local mouse_sel=$(shift-select::get-primary)
 		
-		# Only replace mouse selection if:
-		# 1. Mouse selection exists and is in the buffer
-		# 2. It's NOT the same as what we're about to paste
-		# 3. It was recently copied (matches _SHIFT_SELECT_LAST_PRIMARY from a recent copy operation)
-		if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* && "$mouse_sel" != "$clipboard_content" && "$mouse_sel" == "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
-			# Find and delete the mouse-selected text from buffer
-			local before="${BUFFER%%$mouse_sel*}"
-			local after="${BUFFER#*$mouse_sel}"
+		# Check if PRIMARY has changed (new selection was made)
+		if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
+			# This is a NEW selection - mark it as active
+			_SHIFT_SELECT_ACTIVE_SELECTION="$mouse_sel"
+			_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+		fi
+		
+		# Replace active mouse selection if it exists in buffer
+		if [[ -n "$_SHIFT_SELECT_ACTIVE_SELECTION" && "$BUFFER" == *"$_SHIFT_SELECT_ACTIVE_SELECTION"* ]]; then
+			local before="${BUFFER%%$_SHIFT_SELECT_ACTIVE_SELECTION*}"
+			local after="${BUFFER#*$_SHIFT_SELECT_ACTIVE_SELECTION}"
 			BUFFER="${before}${after}"
 			CURSOR=${#before}
+			# Clear the active selection after replacing
+			_SHIFT_SELECT_ACTIVE_SELECTION=""
 		fi
 	fi
 	
-	# Clear the tracking after paste - user is done with this selection
-	_SHIFT_SELECT_LAST_PRIMARY=""
-	# Reset the keyboard copy flag after paste
-	_SHIFT_SELECT_KEYBOARD_COPY=0
-	
 	# Now perform the default bracketed paste at the current cursor position
 	zle .bracketed-paste
+	
+	# Update buffer tracking after paste
+	_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
 }
 zle -N shift-select::bracketed-paste-replace
 
@@ -309,32 +339,17 @@ function shift-select::paste-clipboard() {
 		zle kill-region -w
 		REGION_ACTIVE=0
 		zle -K main
-	elif (( !_SHIFT_SELECT_KEYBOARD_COPY )); then
-		# Only check for mouse selection if the last copy wasn't from keyboard
-		local mouse_sel=$(shift-select::get-primary)
-		
-		# Only replace mouse selection if:
-		# 1. Mouse selection exists and is in the buffer
-		# 2. It's NOT the same as what we're about to paste
-		# 3. It was recently copied (matches _SHIFT_SELECT_LAST_PRIMARY from a recent copy operation)
-		if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* && "$mouse_sel" != "$clipboard_content" && "$mouse_sel" == "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
-			# Find and delete the mouse-selected text from buffer
-			local before="${BUFFER%%$mouse_sel*}"
-			local after="${BUFFER#*$mouse_sel}"
-			BUFFER="${before}${after}"
-			CURSOR=${#before}
-		fi
 	fi
 	
-	# Clear the tracking after paste - user is done with this selection
-	_SHIFT_SELECT_LAST_PRIMARY=""
-	# Reset the keyboard copy flag after paste
-	_SHIFT_SELECT_KEYBOARD_COPY=0
+	# NEVER replace mouse selections on paste - they may have been visually deselected
 	
 	# Insert clipboard content
 	if [[ -n "$clipboard_content" ]]; then
 		LBUFFER="${LBUFFER}${clipboard_content}"
 	fi
+	
+	# Update buffer tracking after paste
+	_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
 }
 zle -N shift-select::paste-clipboard
 
@@ -401,6 +416,9 @@ function {
 	); do
 		bindkey -M shift-select ${terminfo[$kcap]:-$seq} $widget
 	done
+	
+	# Bind Backspace in emacs keymap to handle mouse selections
+	bindkey -M emacs '^?' shift-select::delete-mouse-or-backspace
 	
 	# Bind Ctrl+A to select all in emacs keymap
 	bindkey -M emacs '^A' shift-select::select-all
