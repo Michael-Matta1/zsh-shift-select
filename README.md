@@ -305,6 +305,7 @@ Some keys may not work in your terminal by default. To check compatibility, run 
 | **Alacritty** | ✅ Works out-of-box    | No configuration needed                                           |
 | **Kitty**     | ⚙️ Needs configuration | Shift + Ctrl doesn't work by default — [see fix](#kitty)          |
 | **WezTerm**   | ⚙️ Needs configuration | Shift + Ctrl + arrows don't work by default — [see fix](#wezterm) |
+| **VS Code**   | ⚙️ Needs configuration | Key bindings intercepted by default — [see fix](#vs-code)         |
 
 ### Kitty
 
@@ -334,6 +335,78 @@ return {
   },
 }
 ```
+
+### VS Code
+
+[VS Code](https://code.visualstudio.com/) intercepts several key combinations in its integrated terminal by default. To make zsh-shift-select work properly, you need to configure VS Code to send the correct escape sequences to the terminal.
+
+Add the following to your **`keybindings.json`** (File → Preferences → Keyboard Shortcuts → Open Keyboard Shortcuts JSON):
+
+```json
+[
+	{
+		// Ctrl+C sends copy sequence to terminal (CSI 67 ; 6 u)
+		// This is the sequence that triggers the copy widget in zsh
+		"key": "ctrl+c",
+		"command": "workbench.action.terminal.sendSequence",
+		"args": { "text": "\u001b[67;6u" },
+		"when": "terminalFocus"
+	},
+	{
+		// Ctrl+Shift+C sends interrupt signal (ETX control character)
+		// This is equivalent to the traditional Ctrl+C interrupt behavior
+		"key": "ctrl+shift+c",
+		"command": "workbench.action.terminal.sendSequence",
+		"args": { "text": "\u0003" },
+		"when": "terminalFocus"
+	},
+	{
+		// Ctrl+Shift+Left sends CSI 1 ; 6 D (Ctrl+Shift+Left arrow)
+		// This allows word-backward selection in zsh
+		"key": "ctrl+shift+left",
+		"command": "workbench.action.terminal.sendSequence",
+		"args": { "text": "\u001b[1;6D" },
+		"when": "terminalFocus"
+	},
+	{
+		// Ctrl+Shift+Right sends CSI 1 ; 6 C (Ctrl+Shift+Right arrow)
+		// This allows word-forward selection in zsh
+		"key": "ctrl+shift+right",
+		"command": "workbench.action.terminal.sendSequence",
+		"args": { "text": "\u001b[1;6C" },
+		"when": "terminalFocus"
+	},
+	{
+		// Ctrl+Shift+Home sends CSI 1 ; 6 H (Ctrl+Shift+Home)
+		// This allows selection to beginning of buffer in zsh
+		"key": "ctrl+shift+home",
+		"command": "workbench.action.terminal.sendSequence",
+		"args": { "text": "\u001b[1;6H" },
+		"when": "terminalFocus"
+	},
+	{
+		// Ctrl+Shift+End sends CSI 1 ; 6 F (Ctrl+Shift+End)
+		// This allows selection to end of buffer in zsh
+		"key": "ctrl+shift+end",
+		"command": "workbench.action.terminal.sendSequence",
+		"args": { "text": "\u001b[1;6F" },
+		"when": "terminalFocus"
+	}
+]
+```
+
+#### Understanding the Escape Sequences
+
+The escape sequences used above follow the ANSI/VT terminal protocol:
+
+-   **`\u001b`** — ESC character (starts an escape sequence)
+-   **`[67;6u`** — CSI u-format for modified keys (67 = 'C' key code, 6 = Shift+Ctrl modifiers)
+-   **`\u0003`** — ETX control character (traditional interrupt signal, equivalent to `^C`)
+-   **`[1;6D/C/H/F`** — CSI format for cursor movement with modifiers (1 = cursor command, 6 = Shift+Ctrl, D/C/H/F = direction)
+
+> **Note:** If these sequences don't work for you, you can verify what your terminal expects by running `cat` (without arguments) and pressing the key combinations. The terminal will display the exact escape sequences it receives. Copy those sequences and replace the `"text"` values in the configuration above.
+
+> **Tip:** To test if the configuration is working, open the VS Code integrated terminal, run `cat`, and press the configured key combinations. You should see output instead of VS Code intercepting the keys.
 
 ---
 

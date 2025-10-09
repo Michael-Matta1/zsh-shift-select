@@ -14,6 +14,7 @@ typeset -g _SHIFT_SELECT_PRIMARY_CMD
 typeset -g _SHIFT_SELECT_LAST_PRIMARY=""
 typeset -g _SHIFT_SELECT_PRIMARY_ACTIVE=0
 typeset -g _SHIFT_SELECT_LAST_BUFFER=""
+typeset -g _SHIFT_SELECT_KEYBOARD_COPY=0
 
 function shift-select::detect-clipboard() {
 	if command -v wl-copy &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
@@ -163,30 +164,28 @@ zle -N shift-select::replace-selection
 # Check for mouse selection and handle character input
 function shift-select::handle-char() {
 	# If the buffer has changed since last check, update our tracking
-	# This prevents replacing pasted content
 	if [[ "$BUFFER" != "$_SHIFT_SELECT_LAST_BUFFER" ]]; then
 		_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
-		# Reset the primary tracking when buffer changes externally (paste, etc)
-		local current_primary=$(shift-select::get-primary)
-		if [[ -n "$current_primary" ]]; then
-			_SHIFT_SELECT_LAST_PRIMARY="$current_primary"
-		fi
 	fi
 	
 	# Check for mouse selection in PRIMARY
 	local mouse_sel=$(shift-select::get-primary)
 	
-	# Only replace if we have a new selection (different from last one we processed)
-	# AND the buffer hasn't changed since the last character was typed
-	if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" && "$BUFFER" == *"$mouse_sel"* ]]; then
-		# Mark that we've seen and processed this selection
-		_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
+	# Only replace if:
+	# 1. We have a selection that matches what was last copied
+	# 2. It's in the buffer
+	# 3. It's different from last one we processed
+	if [[ -n "$mouse_sel" && -n "$_SHIFT_SELECT_LAST_PRIMARY" && "$mouse_sel" == "$_SHIFT_SELECT_LAST_PRIMARY" && "$BUFFER" == *"$mouse_sel"* ]]; then
+		# This is a recently copied selection, so replace it
 		
 		# Find and delete the mouse-selected text from buffer
 		local before="${BUFFER%%$mouse_sel*}"
 		local after="${BUFFER#*$mouse_sel}"
 		BUFFER="${before}${after}"
 		CURSOR=${#before}
+		
+		# Clear tracking after replacement
+		_SHIFT_SELECT_LAST_PRIMARY=""
 	fi
 	
 	# Insert the typed character
@@ -205,6 +204,9 @@ function shift-select::copy-region() {
 		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
 		local selected="${BUFFER:$start:$length}"
 		shift-select::copy-to-clipboard "$selected"
+		# Mark that this was a keyboard copy
+		_SHIFT_SELECT_KEYBOARD_COPY=1
+		_SHIFT_SELECT_LAST_PRIMARY="$selected"
 		zle deactivate-region -w
 		zle -K main
 	else
@@ -212,7 +214,8 @@ function shift-select::copy-region() {
 		local primary_sel=$(shift-select::get-primary)
 		if [[ -n "$primary_sel" ]]; then
 			shift-select::copy-to-clipboard "$primary_sel"
-			# Clear the tracking variable so this selection won't be auto-replaced
+			# This was a mouse copy
+			_SHIFT_SELECT_KEYBOARD_COPY=0
 			_SHIFT_SELECT_LAST_PRIMARY="$primary_sel"
 		fi
 	fi
@@ -227,6 +230,9 @@ function shift-select::cut-region() {
 		local length=$(( MARK > CURSOR ? MARK - CURSOR : CURSOR - MARK ))
 		local selected="${BUFFER:$start:$length}"
 		shift-select::copy-to-clipboard "$selected"
+		# Mark that this was a keyboard cut
+		_SHIFT_SELECT_KEYBOARD_COPY=1
+		_SHIFT_SELECT_LAST_PRIMARY="$selected"
 		# Delete the selected text
 		zle kill-region -w
 		zle -K main
@@ -236,6 +242,8 @@ function shift-select::cut-region() {
 		if [[ -n "$mouse_sel" ]]; then
 			# Copy to clipboard
 			shift-select::copy-to-clipboard "$mouse_sel"
+			# This was a mouse cut
+			_SHIFT_SELECT_KEYBOARD_COPY=0
 			
 			# Try to find and delete it from the buffer
 			if [[ "$BUFFER" == *"$mouse_sel"* ]]; then
@@ -262,19 +270,29 @@ function shift-select::bracketed-paste-replace() {
 		zle kill-region -w
 		REGION_ACTIVE=0
 		zle -K main
-	else
-		# Check for mouse selection in PRIMARY
+	elif (( !_SHIFT_SELECT_KEYBOARD_COPY )); then
+		# Only check for mouse selection if the last copy wasn't from keyboard
+		local clipboard_content=$(shift-select::get-clipboard)
 		local mouse_sel=$(shift-select::get-primary)
-		if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* ]]; then
+		
+		# Only replace mouse selection if:
+		# 1. Mouse selection exists and is in the buffer
+		# 2. It's NOT the same as what we're about to paste
+		# 3. It was recently copied (matches _SHIFT_SELECT_LAST_PRIMARY from a recent copy operation)
+		if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* && "$mouse_sel" != "$clipboard_content" && "$mouse_sel" == "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
 			# Find and delete the mouse-selected text from buffer
 			local before="${BUFFER%%$mouse_sel*}"
 			local after="${BUFFER#*$mouse_sel}"
 			BUFFER="${before}${after}"
 			CURSOR=${#before}
-			# Mark this selection as processed
-			_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
 		fi
 	fi
+	
+	# Clear the tracking after paste - user is done with this selection
+	_SHIFT_SELECT_LAST_PRIMARY=""
+	# Reset the keyboard copy flag after paste
+	_SHIFT_SELECT_KEYBOARD_COPY=0
+	
 	# Now perform the default bracketed paste at the current cursor position
 	zle .bracketed-paste
 }
@@ -282,28 +300,38 @@ zle -N shift-select::bracketed-paste-replace
 
 # Manual paste function for Ctrl+V
 function shift-select::paste-clipboard() {
+	# Get clipboard content first
+	local clipboard_content=$(shift-select::get-clipboard)
+	
 	# Check if there's an active keyboard selection
 	if (( REGION_ACTIVE )); then
 		# Delete the selected region first
 		zle kill-region -w
 		REGION_ACTIVE=0
 		zle -K main
-	else
-		# Check for mouse selection in PRIMARY
+	elif (( !_SHIFT_SELECT_KEYBOARD_COPY )); then
+		# Only check for mouse selection if the last copy wasn't from keyboard
 		local mouse_sel=$(shift-select::get-primary)
-		if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* ]]; then
+		
+		# Only replace mouse selection if:
+		# 1. Mouse selection exists and is in the buffer
+		# 2. It's NOT the same as what we're about to paste
+		# 3. It was recently copied (matches _SHIFT_SELECT_LAST_PRIMARY from a recent copy operation)
+		if [[ -n "$mouse_sel" && "$BUFFER" == *"$mouse_sel"* && "$mouse_sel" != "$clipboard_content" && "$mouse_sel" == "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
 			# Find and delete the mouse-selected text from buffer
 			local before="${BUFFER%%$mouse_sel*}"
 			local after="${BUFFER#*$mouse_sel}"
 			BUFFER="${before}${after}"
 			CURSOR=${#before}
-			# Mark this selection as processed
-			_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
 		fi
 	fi
 	
-	# Get clipboard content and insert it
-	local clipboard_content=$(shift-select::get-clipboard)
+	# Clear the tracking after paste - user is done with this selection
+	_SHIFT_SELECT_LAST_PRIMARY=""
+	# Reset the keyboard copy flag after paste
+	_SHIFT_SELECT_KEYBOARD_COPY=0
+	
+	# Insert clipboard content
 	if [[ -n "$clipboard_content" ]]; then
 		LBUFFER="${LBUFFER}${clipboard_content}"
 	fi
