@@ -86,6 +86,407 @@ function shift-select::copy-to-clipboard() {
 # Initialize clipboard detection
 shift-select::detect-clipboard
 
+# ==============================================================================
+# Configuration Wizard
+# ==============================================================================
+
+# Configuration file path
+typeset -g _SHIFT_SELECT_CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/zsh-shift-select/config"
+
+# Store the path to this plugin file for reset functionality
+typeset -g _SHIFT_SELECT_PLUGIN_FILE="${(%):-%x}"
+
+# Load user configuration if it exists
+function shift-select::load-config() {
+	if [[ -f "$_SHIFT_SELECT_CONFIG_FILE" ]]; then
+		source "$_SHIFT_SELECT_CONFIG_FILE"
+	fi
+}
+
+# Save configuration setting
+function shift-select::save-config() {
+	local key="$1"
+	local value="$2"
+	
+	# Create config directory if it doesn't exist
+	mkdir -p "${_SHIFT_SELECT_CONFIG_FILE:h}"
+	
+	# Create or update config file
+	if [[ -f "$_SHIFT_SELECT_CONFIG_FILE" ]]; then
+		# Update existing key or append if not found
+		if grep -q "^${key}=" "$_SHIFT_SELECT_CONFIG_FILE" 2>/dev/null; then
+			# Use a temporary file for sed compatibility across platforms
+			local tmp_file="${_SHIFT_SELECT_CONFIG_FILE}.tmp"
+			sed "s|^${key}=.*|${key}=\"${value}\"|" "$_SHIFT_SELECT_CONFIG_FILE" > "$tmp_file"
+			mv "$tmp_file" "$_SHIFT_SELECT_CONFIG_FILE"
+		else
+			echo "${key}=\"${value}\"" >> "$_SHIFT_SELECT_CONFIG_FILE"
+		fi
+	else
+		echo "${key}=\"${value}\"" > "$_SHIFT_SELECT_CONFIG_FILE"
+	fi
+}
+
+# Display the configuration menu
+function shift-select::show-menu() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║         ZSH Shift-Select Configuration Wizard                  ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	echo "Current Configuration:"
+	echo "  Clipboard Integration: ${SHIFT_SELECT_CLIPBOARD_TYPE:-auto-detect}"
+	echo "  Mouse Replacement:     ${SHIFT_SELECT_MOUSE_REPLACEMENT:-enabled}"
+	echo ""
+	echo "Available Options:"
+	echo "  1) Configure Clipboard Integration"
+	echo "  2) Configure Mouse Replacement"
+	echo "  3) Reset to Default Configuration"
+	echo "  4) View Current Configuration"
+	echo "  5) Exit"
+	echo ""
+	echo -n "Select an option (1-5): "
+}
+
+# Configure clipboard integration
+function shift-select::configure-clipboard() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║            Clipboard Integration Configuration                 ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	echo "Select your preferred clipboard backend:"
+	echo ""
+	echo "  1) Wayland (wl-copy/wl-paste)"
+	echo "  2) X11 (xclip)"
+	echo "  3) Auto-detect (recommended)"
+	echo "  4) Back to main menu"
+	echo ""
+	echo -n "Select an option (1-4): "
+	
+	read -r choice
+	
+	case "$choice" in
+		1)
+			shift-select::set-clipboard-backend "wayland"
+			;;
+		2)
+			shift-select::set-clipboard-backend "x11"
+			;;
+		3)
+			shift-select::set-clipboard-backend "auto"
+			;;
+		4)
+			return
+			;;
+		*)
+			echo ""
+			echo "Invalid option. Press Enter to continue..."
+			read -r
+			shift-select::configure-clipboard
+			;;
+	esac
+}
+
+# Set clipboard backend and update plugin configuration
+function shift-select::set-clipboard-backend() {
+	local backend="$1"
+	
+	echo ""
+	echo "Setting clipboard backend to: $backend"
+	
+	# Save to config file
+	shift-select::save-config "SHIFT_SELECT_CLIPBOARD_TYPE" "$backend"
+	
+	# Apply the configuration immediately
+	case "$backend" in
+		wayland)
+			if command -v wl-copy &>/dev/null; then
+				_SHIFT_SELECT_CLIPBOARD_CMD="wl-copy"
+				_SHIFT_SELECT_PRIMARY_CMD="wl-paste --primary"
+				echo "✓ Wayland clipboard configured successfully"
+			else
+				echo "⚠ Warning: wl-copy not found. Please install wl-clipboard package."
+			fi
+			;;
+		x11)
+			if command -v xclip &>/dev/null; then
+				_SHIFT_SELECT_CLIPBOARD_CMD="xclip -selection clipboard"
+				_SHIFT_SELECT_PRIMARY_CMD="xclip -selection primary -o"
+				echo "✓ X11 clipboard configured successfully"
+			else
+				echo "⚠ Warning: xclip not found. Please install xclip package."
+			fi
+			;;
+		auto)
+			shift-select::detect-clipboard
+			echo "✓ Auto-detect mode enabled"
+			;;
+	esac
+	
+	# Update the global variable for display
+	typeset -g SHIFT_SELECT_CLIPBOARD_TYPE="$backend"
+	
+	echo ""
+	echo "Configuration saved. Press Enter to continue..."
+	read -r
+}
+
+# Configure mouse replacement feature
+function shift-select::configure-mouse-replacement() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║            Mouse Replacement Configuration                     ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	echo "The Mouse Replacement feature allows you to:"
+	echo "  • Select text with your mouse in the terminal"
+	echo "  • Type to replace the selected text"
+	echo "  • Delete selections with Backspace"
+	echo "  • Paste over selections"
+	echo ""
+	echo "Current status: ${SHIFT_SELECT_MOUSE_REPLACEMENT:-enabled}"
+	echo ""
+	echo "Select an option:"
+	echo ""
+	echo "  1) Enable Mouse Replacement"
+	echo "  2) Disable Mouse Replacement"
+	echo "  3) Back to main menu"
+	echo ""
+	echo -n "Select an option (1-3): "
+	
+	read -r choice
+	
+	case "$choice" in
+		1)
+			shift-select::set-mouse-replacement "enabled"
+			;;
+		2)
+			shift-select::set-mouse-replacement "disabled"
+			;;
+		3)
+			return
+			;;
+		*)
+			echo ""
+			echo "Invalid option. Press Enter to continue..."
+			read -r
+			shift-select::configure-mouse-replacement
+			;;
+	esac
+}
+
+# Set mouse replacement mode and update plugin configuration
+function shift-select::set-mouse-replacement() {
+	local mode="$1"
+	
+	echo ""
+	echo "Setting mouse replacement to: $mode"
+	
+	# Save to config file
+	shift-select::save-config "SHIFT_SELECT_MOUSE_REPLACEMENT" "$mode"
+	
+	# Update the global variable for display
+	typeset -g SHIFT_SELECT_MOUSE_REPLACEMENT="$mode"
+	
+	# Apply the configuration immediately by rebinding keys
+	shift-select::apply-mouse-replacement-config
+	
+	if [[ "$mode" == "enabled" ]]; then
+		echo "✓ Mouse replacement enabled"
+		echo "  You can now select text with your mouse and type to replace it"
+	else
+		echo "✓ Mouse replacement disabled"
+		echo "  Mouse selections will no longer be replaced when typing"
+	fi
+	
+	echo ""
+	echo "Configuration saved. Press Enter to continue..."
+	read -r
+}
+
+# Reset configuration to defaults
+function shift-select::reset-config() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║              Reset Configuration to Defaults                   ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	echo "This will:"
+	echo "  • Delete your custom configuration file"
+	echo "  • Reset clipboard integration to auto-detect mode"
+	echo "  • Reset mouse replacement to enabled"
+	echo "  • Restore all default plugin behavior"
+	echo ""
+	echo -n "Are you sure? (y/N): "
+	
+	read -r confirm
+	
+	if [[ "$confirm" =~ ^[Yy]$ ]]; then
+		# Remove config file
+		if [[ -f "$_SHIFT_SELECT_CONFIG_FILE" ]]; then
+			rm -f "$_SHIFT_SELECT_CONFIG_FILE"
+			echo ""
+			echo "✓ Configuration file deleted"
+		fi
+		
+		# Reset to auto-detect
+		shift-select::detect-clipboard
+		unset SHIFT_SELECT_CLIPBOARD_TYPE
+		
+		# Reset mouse replacement to enabled (default)
+		typeset -g SHIFT_SELECT_MOUSE_REPLACEMENT="enabled"
+		shift-select::apply-mouse-replacement-config
+		
+		echo "✓ Configuration reset to defaults"
+		echo ""
+		echo "Press Enter to continue..."
+		read -r
+	else
+		echo ""
+		echo "Reset cancelled."
+		echo "Press Enter to continue..."
+		read -r
+	fi
+}
+
+# View current configuration
+function shift-select::view-config() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║                Current Configuration                           ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	
+	if [[ -f "$_SHIFT_SELECT_CONFIG_FILE" ]]; then
+		echo "Configuration file: $_SHIFT_SELECT_CONFIG_FILE"
+		echo ""
+		echo "Settings:"
+		echo "─────────────────────────────────────────────────────────────"
+		cat "$_SHIFT_SELECT_CONFIG_FILE"
+		echo "─────────────────────────────────────────────────────────────"
+	else
+		echo "No custom configuration file found."
+		echo "Using default settings (auto-detect mode)."
+	fi
+	
+	echo ""
+	echo "Active Settings:"
+	echo "  Clipboard Type:     ${SHIFT_SELECT_CLIPBOARD_TYPE:-auto-detect}"
+	echo "  Clipboard Cmd:      ${_SHIFT_SELECT_CLIPBOARD_CMD:-none}"
+	echo "  Primary Cmd:        ${_SHIFT_SELECT_PRIMARY_CMD:-none}"
+	echo "  Mouse Replacement:  ${SHIFT_SELECT_MOUSE_REPLACEMENT:-enabled}"
+	echo ""
+	echo "Plugin file: $_SHIFT_SELECT_PLUGIN_FILE"
+	echo ""
+	echo "Press Enter to continue..."
+	read -r
+}
+
+# Main configuration wizard function
+function shift-select::config-wizard() {
+	# Load current config
+	shift-select::load-config
+	
+	# Set display variables
+	typeset -g SHIFT_SELECT_CLIPBOARD_TYPE="${SHIFT_SELECT_CLIPBOARD_TYPE:-auto-detect}"
+	typeset -g SHIFT_SELECT_MOUSE_REPLACEMENT="${SHIFT_SELECT_MOUSE_REPLACEMENT:-enabled}"
+	
+	while true; do
+		shift-select::show-menu
+		read -r choice
+		
+		case "$choice" in
+			1)
+				shift-select::configure-clipboard
+				;;
+			2)
+				shift-select::configure-mouse-replacement
+				;;
+			3)
+				shift-select::reset-config
+				;;
+			4)
+				shift-select::view-config
+				;;
+			5)
+				clear
+				echo "Configuration wizard closed."
+				return 0
+				;;
+			*)
+				echo ""
+				echo "Invalid option. Press Enter to continue..."
+				read -r
+				;;
+		esac
+	done
+}
+
+# Create the zselect command with subcommand support
+function zselect() {
+	case "$1" in
+		conf|config)
+			shift-select::config-wizard
+			;;
+		*)
+			echo "ZSH Shift-Select Plugin"
+			echo ""
+			echo "Usage: zselect <command>"
+			echo ""
+			echo "Commands:"
+			echo "  conf, config    Launch configuration wizard"
+			echo ""
+			echo "For more information, visit:"
+			echo "https://github.com/Michael-Matta1/zsh-shift-select"
+			;;
+	esac
+}
+
+# Load user configuration on plugin initialization
+shift-select::load-config
+
+# Apply user's clipboard preference if set
+if [[ -n "$SHIFT_SELECT_CLIPBOARD_TYPE" ]]; then
+	case "$SHIFT_SELECT_CLIPBOARD_TYPE" in
+		wayland)
+			if command -v wl-copy &>/dev/null; then
+				_SHIFT_SELECT_CLIPBOARD_CMD="wl-copy"
+				_SHIFT_SELECT_PRIMARY_CMD="wl-paste --primary"
+			fi
+			;;
+		x11)
+			if command -v xclip &>/dev/null; then
+				_SHIFT_SELECT_CLIPBOARD_CMD="xclip -selection clipboard"
+				_SHIFT_SELECT_PRIMARY_CMD="xclip -selection primary -o"
+			fi
+			;;
+		# auto is already handled by the initial detect-clipboard call
+	esac
+fi
+
+# Apply mouse replacement configuration on initialization
+# This function will be defined later, after the widget definitions
+function shift-select::apply-mouse-replacement-config() {
+	# Get current setting (default to enabled if not set)
+	local mode="${SHIFT_SELECT_MOUSE_REPLACEMENT:-enabled}"
+	
+	if [[ "$mode" == "enabled" ]]; then
+		# Bind mouse-related handlers in emacs keymap
+		bindkey -M emacs -R ' '-'~' shift-select::handle-char
+		bindkey -M emacs '^?' shift-select::delete-mouse-or-backspace
+		bindkey -M emacs '^[[200~' shift-select::bracketed-paste-replace
+	else
+		# Unbind mouse handlers - restore default behavior
+		# Use self-insert for printable characters (space to ~)
+		bindkey -M emacs -R ' '-'~' self-insert
+		# Restore default backspace behavior
+		bindkey -M emacs '^?' backward-delete-char
+		# Restore default bracketed paste
+		bindkey -M emacs '^[[200~' bracketed-paste
+	fi
+}
+
 # Move cursor to the end of the buffer.
 # This is an alternative to builtin end-of-buffer-or-history.
 function end-of-buffer() {
@@ -437,3 +838,7 @@ function {
 	bindkey -M emacs '^[[200~' shift-select::bracketed-paste-replace
 	bindkey -M shift-select '^[[200~' shift-select::bracketed-paste-replace
 }
+
+# Apply mouse replacement configuration based on user preference
+# This must be called after all widgets are defined and initial bindings are set
+shift-select::apply-mouse-replacement-config
