@@ -17,6 +17,18 @@ typeset -g _SHIFT_SELECT_LAST_PRIMARY=""
 typeset -g _SHIFT_SELECT_ACTIVE_SELECTION=""
 typeset -g _SHIFT_SELECT_LAST_BUFFER=""
 
+# Default keybindings (for reset functionality)
+typeset -g _SHIFT_SELECT_DEFAULT_KEYBINDINGS=(
+	SELECT_ALL '^A'
+	PASTE '^V'
+	CUT '^X'
+)
+
+# Current keybindings (can be customized by user)
+typeset -g SHIFT_SELECT_KEY_SELECT_ALL="${SHIFT_SELECT_KEY_SELECT_ALL:-^A}"
+typeset -g SHIFT_SELECT_KEY_PASTE="${SHIFT_SELECT_KEY_PASTE:-^V}"
+typeset -g SHIFT_SELECT_KEY_CUT="${SHIFT_SELECT_KEY_CUT:-^X}"
+
 function shift-select::detect-clipboard() {
 	if command -v wl-copy &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
 		# Wayland
@@ -127,6 +139,49 @@ function shift-select::save-config() {
 	fi
 }
 
+# Save keybinding configuration
+function shift-select::save-keybinding() {
+	local action="$1"
+	local keybinding="$2"
+	
+	shift-select::save-config "SHIFT_SELECT_KEY_${action}" "$keybinding"
+}
+
+# Load keybinding configurations
+function shift-select::load-keybindings() {
+	shift-select::load-config
+	
+	# Set current keybindings from config or use defaults
+	SHIFT_SELECT_KEY_SELECT_ALL="${SHIFT_SELECT_KEY_SELECT_ALL:-^A}"
+	SHIFT_SELECT_KEY_PASTE="${SHIFT_SELECT_KEY_PASTE:-^V}"
+	SHIFT_SELECT_KEY_CUT="${SHIFT_SELECT_KEY_CUT:-^X}"
+}
+
+# Apply keybindings to the plugin
+function shift-select::apply-keybindings() {
+	# Unbind old keybindings first (if they exist)
+	bindkey -M emacs -r '^A' 2>/dev/null
+	bindkey -M emacs -r '^V' 2>/dev/null
+	bindkey -M emacs -r '^X' 2>/dev/null
+	bindkey -r '^X' 2>/dev/null
+	
+	# Apply new keybindings
+	if [[ -n "$SHIFT_SELECT_KEY_SELECT_ALL" ]]; then
+		bindkey -M emacs "$SHIFT_SELECT_KEY_SELECT_ALL" shift-select::select-all
+	fi
+	
+	if [[ -n "$SHIFT_SELECT_KEY_PASTE" ]]; then
+		bindkey -M emacs "$SHIFT_SELECT_KEY_PASTE" shift-select::paste-clipboard
+		bindkey -M shift-select "$SHIFT_SELECT_KEY_PASTE" shift-select::paste-clipboard
+	fi
+	
+	if [[ -n "$SHIFT_SELECT_KEY_CUT" ]]; then
+		bindkey -M emacs "$SHIFT_SELECT_KEY_CUT" shift-select::cut-region
+		bindkey -M shift-select "$SHIFT_SELECT_KEY_CUT" shift-select::cut-region
+		bindkey "$SHIFT_SELECT_KEY_CUT" shift-select::cut-region
+	fi
+}
+
 # Display the configuration menu
 function shift-select::show-menu() {
 	clear
@@ -141,11 +196,12 @@ function shift-select::show-menu() {
 	echo "Available Options:"
 	echo "  1) Configure Clipboard Integration"
 	echo "  2) Configure Mouse Replacement"
-	echo "  3) Reset to Default Configuration"
-	echo "  4) View Current Configuration"
-	echo "  5) Exit"
+	echo "  3) Configure Key Bindings"
+	echo "  4) Reset to Default Configuration"
+	echo "  5) View Current Configuration"
+	echo "  6) Exit"
 	echo ""
-	echo -n "Select an option (1-5): "
+	echo -n "Select an option (1-6): "
 }
 
 # Configure clipboard integration
@@ -305,6 +361,290 @@ function shift-select::set-mouse-replacement() {
 	read -r
 }
 
+# Configure Select All keybinding
+function shift-select::configure-select-all() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║              Configure Select All Keybinding                   ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	echo "Current keybinding: $SHIFT_SELECT_KEY_SELECT_ALL"
+	echo ""
+	echo "Select a keybinding for Select All:"
+	echo ""
+	echo "  1) Ctrl + A (^A)"
+	echo "  2) Ctrl + Shift + A (^[[65;6u)"
+	echo "  3) Advanced Option (Enter custom keybinding)"
+	echo "  4) Back to Key Bindings menu"
+	echo ""
+	echo -n "Select an option (1-4): "
+	
+	read -r choice
+	
+	case "$choice" in
+		1)
+			shift-select::set-keybinding "SELECT_ALL" "^A"
+			;;
+		2)
+			shift-select::set-keybinding "SELECT_ALL" "^[[65;6u"
+			;;
+		3)
+			echo ""
+			echo "Enter your custom keybinding (e.g., ^A, ^[[200~):"
+			echo -n "> "
+			read -r custom_key
+			if [[ -n "$custom_key" ]]; then
+				shift-select::set-keybinding "SELECT_ALL" "$custom_key"
+			else
+				echo "Invalid keybinding. Press Enter to continue..."
+				read -r
+				shift-select::configure-select-all
+			fi
+			;;
+		4)
+			return
+			;;
+		*)
+			echo ""
+			echo "Invalid option. Press Enter to continue..."
+			read -r
+			shift-select::configure-select-all
+			;;
+	esac
+}
+
+# Configure Paste keybinding
+function shift-select::configure-paste() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║                Configure Paste Keybinding                      ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	echo "Current keybinding: $SHIFT_SELECT_KEY_PASTE"
+	echo ""
+	echo "Select a keybinding for Paste:"
+	echo ""
+	echo "  1) Ctrl + V (^V)"
+	echo "  2) Ctrl + Shift + V (^[[86;6u)"
+	echo "  3) Advanced Option (Enter custom keybinding)"
+	echo "  4) Back to Key Bindings menu"
+	echo ""
+	echo -n "Select an option (1-4): "
+	
+	read -r choice
+	
+	case "$choice" in
+		1)
+			shift-select::set-keybinding "PASTE" "^V"
+			;;
+		2)
+			shift-select::set-keybinding "PASTE" "^[[86;6u"
+			;;
+		3)
+			echo ""
+			echo "Enter your custom keybinding (e.g., ^V, ^[[200~):"
+			echo -n "> "
+			read -r custom_key
+			if [[ -n "$custom_key" ]]; then
+				shift-select::set-keybinding "PASTE" "$custom_key"
+			else
+				echo "Invalid keybinding. Press Enter to continue..."
+				read -r
+				shift-select::configure-paste
+			fi
+			;;
+		4)
+			return
+			;;
+		*)
+			echo ""
+			echo "Invalid option. Press Enter to continue..."
+			read -r
+			shift-select::configure-paste
+			;;
+	esac
+}
+
+# Configure Cut keybinding
+function shift-select::configure-cut() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║                 Configure Cut Keybinding                       ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	echo "Current keybinding: $SHIFT_SELECT_KEY_CUT"
+	echo ""
+	echo "Select a keybinding for Cut:"
+	echo ""
+	echo "  1) Ctrl + X (^X)"
+	echo "  2) Ctrl + Shift + X (^[[88;6u)"
+	echo "  3) Advanced Option (Enter custom keybinding)"
+	echo "  4) Back to Key Bindings menu"
+	echo ""
+	echo -n "Select an option (1-4): "
+	
+	read -r choice
+	
+	case "$choice" in
+		1)
+			shift-select::set-keybinding "CUT" "^X"
+			;;
+		2)
+			shift-select::set-keybinding "CUT" "^[[88;6u"
+			;;
+		3)
+			echo ""
+			echo "Enter your custom keybinding (e.g., ^X, ^[[200~):"
+			echo -n "> "
+			read -r custom_key
+			if [[ -n "$custom_key" ]]; then
+				shift-select::set-keybinding "CUT" "$custom_key"
+			else
+				echo "Invalid keybinding. Press Enter to continue..."
+				read -r
+				shift-select::configure-cut
+			fi
+			;;
+		4)
+			return
+			;;
+		*)
+			echo ""
+			echo "Invalid option. Press Enter to continue..."
+			read -r
+			shift-select::configure-cut
+			;;
+	esac
+}
+
+# Set keybinding and apply it
+function shift-select::set-keybinding() {
+	local action="$1"
+	local keybinding="$2"
+	
+	echo ""
+	echo "Setting $action keybinding to: $keybinding"
+	
+	# Save to config file
+	shift-select::save-keybinding "$action" "$keybinding"
+	
+	# Update the global variable
+	case "$action" in
+		SELECT_ALL)
+			typeset -g SHIFT_SELECT_KEY_SELECT_ALL="$keybinding"
+			;;
+		PASTE)
+			typeset -g SHIFT_SELECT_KEY_PASTE="$keybinding"
+			;;
+		CUT)
+			typeset -g SHIFT_SELECT_KEY_CUT="$keybinding"
+			;;
+	esac
+	
+	# Apply the keybindings immediately
+	shift-select::apply-keybindings
+	
+	echo "✓ Keybinding configured successfully"
+	echo ""
+	echo "Configuration saved. Press Enter to continue..."
+	read -r
+}
+
+# Reset keybindings to defaults
+function shift-select::reset-keybindings() {
+	clear
+	echo "╔════════════════════════════════════════════════════════════════╗"
+	echo "║             Reset Keybindings to Defaults                      ║"
+	echo "╚════════════════════════════════════════════════════════════════╝"
+	echo ""
+	echo "This will restore all keybindings to their default values:"
+	echo ""
+	echo "  • Select All: Ctrl + A (^A)"
+	echo "  • Paste:      Ctrl + V (^V)"
+	echo "  • Cut:        Ctrl + X (^X)"
+	echo ""
+	echo -n "Are you sure? (y/N): "
+	
+	read -r confirm
+	
+	if [[ "$confirm" =~ ^[Yy]$ ]]; then
+		echo ""
+		
+		# Reset to defaults
+		typeset -g SHIFT_SELECT_KEY_SELECT_ALL="^A"
+		typeset -g SHIFT_SELECT_KEY_PASTE="^V"
+		typeset -g SHIFT_SELECT_KEY_CUT="^X"
+		
+		# Save to config
+		shift-select::save-keybinding "SELECT_ALL" "^A"
+		shift-select::save-keybinding "PASTE" "^V"
+		shift-select::save-keybinding "CUT" "^X"
+		
+		# Apply keybindings
+		shift-select::apply-keybindings
+		
+		echo "✓ All keybindings have been reset to defaults"
+		echo ""
+		echo "Press Enter to continue..."
+		read -r
+	else
+		echo ""
+		echo "Reset cancelled."
+		echo "Press Enter to continue..."
+		read -r
+	fi
+}
+
+# Configure keybindings
+function shift-select::configure-keybindings() {
+	while true; do
+		clear
+		echo "╔════════════════════════════════════════════════════════════════╗"
+		echo "║              Key Bindings Configuration                        ║"
+		echo "╚════════════════════════════════════════════════════════════════╝"
+		echo ""
+		echo "Current Key Bindings:"
+		echo "  Select All: $SHIFT_SELECT_KEY_SELECT_ALL"
+		echo "  Paste:      $SHIFT_SELECT_KEY_PASTE"
+		echo "  Cut:        $SHIFT_SELECT_KEY_CUT"
+		echo ""
+		echo "Select an action to configure:"
+		echo ""
+		echo "  1) Select All"
+		echo "  2) Paste"
+		echo "  3) Cut"
+		echo "  4) Reset to Default Keybindings"
+		echo "  5) Back to main menu"
+		echo ""
+		echo -n "Select an option (1-5): "
+		
+		read -r choice
+		
+		case "$choice" in
+			1)
+				shift-select::configure-select-all
+				;;
+			2)
+				shift-select::configure-paste
+				;;
+			3)
+				shift-select::configure-cut
+				;;
+			4)
+				shift-select::reset-keybindings
+				;;
+			5)
+				return
+				;;
+			*)
+				echo ""
+				echo "Invalid option. Press Enter to continue..."
+				read -r
+				;;
+		esac
+	done
+}
+
 # Reset configuration to defaults
 function shift-select::reset-config() {
 	clear
@@ -377,6 +717,11 @@ function shift-select::view-config() {
 	echo "  Primary Cmd:        ${_SHIFT_SELECT_PRIMARY_CMD:-none}"
 	echo "  Mouse Replacement:  ${SHIFT_SELECT_MOUSE_REPLACEMENT:-enabled}"
 	echo ""
+	echo "Key Bindings:"
+	echo "  Select All:         ${SHIFT_SELECT_KEY_SELECT_ALL:-^A}"
+	echo "  Paste:              ${SHIFT_SELECT_KEY_PASTE:-^V}"
+	echo "  Cut:                ${SHIFT_SELECT_KEY_CUT:-^X}"
+	echo ""
 	echo "Plugin file: $_SHIFT_SELECT_PLUGIN_FILE"
 	echo ""
 	echo "Press Enter to continue..."
@@ -392,6 +737,9 @@ function shift-select::config-wizard() {
 	typeset -g SHIFT_SELECT_CLIPBOARD_TYPE="${SHIFT_SELECT_CLIPBOARD_TYPE:-auto-detect}"
 	typeset -g SHIFT_SELECT_MOUSE_REPLACEMENT="${SHIFT_SELECT_MOUSE_REPLACEMENT:-enabled}"
 	
+	# Load keybinding configurations
+	shift-select::load-keybindings
+	
 	while true; do
 		shift-select::show-menu
 		read -r choice
@@ -404,12 +752,15 @@ function shift-select::config-wizard() {
 				shift-select::configure-mouse-replacement
 				;;
 			3)
-				shift-select::reset-config
+				shift-select::configure-keybindings
 				;;
 			4)
-				shift-select::view-config
+				shift-select::reset-config
 				;;
 			5)
+				shift-select::view-config
+				;;
+			6)
 				clear
 				echo "Configuration wizard closed."
 				return 0
@@ -445,6 +796,9 @@ function zselect() {
 
 # Load user configuration on plugin initialization
 shift-select::load-config
+
+# Load keybinding configurations
+shift-select::load-keybindings
 
 # Apply user's clipboard preference if set
 if [[ -n "$SHIFT_SELECT_CLIPBOARD_TYPE" ]]; then
@@ -812,27 +1166,27 @@ function {
 		kdch1  '^[[3~'    shift-select::kill-region         # Delete
 		bs     '^?'       shift-select::kill-region         # Backspace
 		x      '^[[67;6u' shift-select::copy-region         # Ctrl+Shift+C
-		x      '^X'       shift-select::cut-region          # Ctrl+X
-		x      '^V'       shift-select::paste-clipboard     # Ctrl+V
 	); do
 		bindkey -M shift-select ${terminfo[$kcap]:-$seq} $widget
 	done
 	
+	# Bind user-configurable keybindings in shift-select keymap
+	bindkey -M shift-select "$SHIFT_SELECT_KEY_CUT" shift-select::cut-region
+	bindkey -M shift-select "$SHIFT_SELECT_KEY_PASTE" shift-select::paste-clipboard
+	
 	# Bind Backspace in emacs keymap to handle mouse selections
 	bindkey -M emacs '^?' shift-select::delete-mouse-or-backspace
 	
-	# Bind Ctrl+A to select all in emacs keymap
-	bindkey -M emacs '^A' shift-select::select-all
+	# Bind user-configurable keybindings in emacs keymap
+	bindkey -M emacs "$SHIFT_SELECT_KEY_SELECT_ALL" shift-select::select-all
+	bindkey -M emacs "$SHIFT_SELECT_KEY_PASTE" shift-select::paste-clipboard
+	bindkey -M emacs "$SHIFT_SELECT_KEY_CUT" shift-select::cut-region
 	
-	# Bind Ctrl+V for paste in emacs keymap
-	bindkey -M emacs '^V' shift-select::paste-clipboard
-	
-	# Also bind Ctrl+Shift+C and Ctrl+X in emacs keymap for mouse selections
+	# Also bind Ctrl+Shift+C in emacs keymap for mouse selections
 	bindkey -M emacs '^[[67;6u' shift-select::copy-region
-	bindkey -M emacs '^X' shift-select::cut-region
 	
-	# Ensure Ctrl+X is bound in main keymap as well
-	bindkey '^X' shift-select::cut-region
+	# Ensure Cut is bound in main keymap as well
+	bindkey "$SHIFT_SELECT_KEY_CUT" shift-select::cut-region
 	
 	# Override the default bracketed-paste widget to handle paste-replace
 	bindkey -M emacs '^[[200~' shift-select::bracketed-paste-replace
@@ -842,3 +1196,7 @@ function {
 # Apply mouse replacement configuration based on user preference
 # This must be called after all widgets are defined and initial bindings are set
 shift-select::apply-mouse-replacement-config
+
+# Apply custom keybindings if configured by the user
+# This ensures user's custom keybindings override the defaults
+shift-select::apply-keybindings

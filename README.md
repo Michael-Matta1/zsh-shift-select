@@ -11,7 +11,8 @@ Emacs [shift-select mode](https://www.gnu.org/software/emacs/manual/html_node/em
 -   [Overview](#overview)
 -   [Features](#features)
 -   [Installation](#installation)
--   [Key Bindings](#key-bindings)
+-   [Configuration Wizard](#configuration-wizard)
+-   [Default Key Bindings](#default-key-bindings)
 -   [Clipboard Integration](#clipboard-integration)
 -   [Terminal Compatibility](#terminal-compatibility)
 
@@ -149,7 +150,150 @@ If you use [Oh My Zsh](https://github.com/ohmyzsh/ohmyzsh) framework:
 
 ---
 
-## Key Bindings
+## Configuration Wizard
+
+This plugin includes an **interactive configuration wizard** that allows you to customize the plugin behavior without editing configuration files manually.
+
+### Launching the Configuration Wizard
+
+To open the configuration wizard, run:
+
+```sh
+zselect conf
+```
+
+You'll see the following menu:
+
+```
+╔════════════════════════════════════════════════════════════════╗
+║         ZSH Shift-Select Configuration Wizard                  ║
+╚════════════════════════════════════════════════════════════════╝
+
+Current Configuration:
+  Clipboard Integration: auto-detect
+  Mouse Replacement:     enabled
+
+Available Options:
+  1) Configure Clipboard Integration
+  2) Configure Mouse Replacement
+  3) Configure Key Bindings
+  4) Reset to Default Configuration
+  5) View Current Configuration
+  6) Exit
+
+Select an option (1-6):
+```
+
+### Configuration Options
+
+#### 1. Clipboard Integration
+
+Configure which clipboard backend to use:
+
+-   **Wayland** (`wl-copy`/`wl-paste`) — For Wayland display servers
+-   **X11** (`xclip`) — For X11 display servers
+-   **Auto-detect** (recommended) — Automatically detects your display server
+
+The plugin will warn you if the required tool is not installed.
+
+#### 2. Mouse Replacement
+
+Enable or disable the mouse selection replacement feature:
+
+-   **Enabled** (default) — Type to replace mouse-selected text
+-   **Disabled** — Mouse selections won't be replaced when typing
+
+When enabled, you can select text with your mouse and immediately type to replace it, or press Backspace to delete it.
+
+#### 3. Configure Key Bindings
+
+Customize the keybindings for Select All, Paste, and Cut actions. Each action offers:
+
+-   **Preset options** — Quick selection of common keybindings
+-   **Advanced option** — Manually enter custom key sequences
+
+##### Select All
+
+-   **Ctrl + A** (`^A`) — Default
+-   **Ctrl + Shift + A** (`^[[65;6u`)
+-   **Advanced Option** — Enter custom keybinding
+
+##### Paste
+
+-   **Ctrl + V** (`^V`) — Default
+-   **Ctrl + Shift + V** (`^[[86;6u`)
+-   **Advanced Option** — Enter custom keybinding
+
+##### Cut
+
+-   **Ctrl + X** (`^X`) — Default
+-   **Ctrl + Shift + X** (`^[[88;6u`)
+-   **Advanced Option** — Enter custom keybinding
+
+##### Reset to Default Keybindings
+
+Restore all keybindings to their default values (Ctrl+A, Ctrl+V, Ctrl+X).
+
+##### Custom Keybinding Notes
+
+> **⚠️ Important:** When using custom keybindings (especially with Shift modifiers), you may need to configure your terminal emulator to send the correct escape sequences.
+
+**For Kitty:**
+
+If you want to use `Ctrl + Shift + X` for cut, add this to your `kitty.conf`:
+
+```conf
+map ctrl+shift+x send_text all \x1b[88;6u
+```
+
+**For Other Terminals:**
+
+-   **WezTerm** — Use similar key remapping in `wezterm.lua`
+-   **Alacritty** — Use key bindings in `alacritty.yml`
+-   **VS Code Terminal** — Add to `keybindings.json` (see [VS Code section](#vs-code))
+
+**Verifying Key Sequences:**
+
+Different terminal emulators or operating systems may produce different control key sequences. To verify what your terminal sends:
+
+1. Run `cat` (without arguments) in your terminal
+2. Press the key combination you want to use
+3. Copy the displayed escape sequence
+4. Use that sequence in the Advanced Option when configuring keybindings
+
+For example, if your terminal displays `^[[88;6u` when you press Ctrl+Shift+X, use that exact sequence in the configuration.
+
+#### 4. Reset to Default Configuration
+
+Completely reset the plugin to its default state:
+
+-   Removes custom configuration file
+-   Resets clipboard integration to auto-detect
+-   Resets mouse replacement to enabled
+-   Restores default keybindings
+
+#### 5. View Current Configuration
+
+Display all active settings, including:
+
+-   Clipboard integration type and detected commands
+-   Mouse replacement status
+-   Current keybindings for Select All, Paste, and Cut
+-   Configuration file location
+
+### Configuration Storage
+
+All settings are stored in:
+
+```
+~/.config/zsh-shift-select/config
+```
+
+Changes take effect immediately and persist across shell sessions.
+
+---
+
+## Default Key Bindings
 
 ### Selection Keys
 
@@ -307,12 +451,12 @@ Some keys may not work in your terminal by default. To check compatibility, run 
 
 ### Tested Terminals
 
-| Terminal      | Status                 | Notes                                                             |
-| ------------- | ---------------------- | ----------------------------------------------------------------- |
-| **Alacritty** | ✅ Works out-of-box    | No configuration needed                                           |
-| **Kitty**     | ⚙️ Needs configuration | Shift + Ctrl doesn't work by default — [see fix](#kitty)          |
-| **WezTerm**   | ⚙️ Needs configuration | Shift + Ctrl + arrows don't work by default — [see fix](#wezterm) |
-| **VS Code**   | ⚙️ Needs configuration | Key bindings intercepted by default — [see fix](#vs-code)         |
+| Terminal             | Status                 | Notes                                                             |
+| -------------------- | ---------------------- | ----------------------------------------------------------------- |
+| **Alacritty**        | ✅ Works out-of-box    | No configuration needed                                           |
+| **Kitty**            | ⚙️ Needs configuration | Shift + Ctrl doesn't work by default — [see fix](#kitty)          |
+| **WezTerm**          | ⚙️ Needs configuration | Shift + Ctrl + arrows don't work by default — [see fix](#wezterm) |
+| **VS Code Terminal** | ⚙️ Needs configuration | Key bindings intercepted by default — [see fix](#vs-code)         |
 
 ### Kitty
 
@@ -343,7 +487,7 @@ return {
 }
 ```
 
-### VS Code
+### VS Code Terminal
 
 [VS Code](https://code.visualstudio.com/) intercepts several key combinations in its integrated terminal by default. To make zsh-shift-select work properly, you need to configure VS Code to send the correct escape sequences to the terminal.
 
