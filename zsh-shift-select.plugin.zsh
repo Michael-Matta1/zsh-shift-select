@@ -205,8 +205,10 @@ function shift-select::handle-char() {
 	
 	# Check if PRIMARY has changed (new selection was made)
 	if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
-		# This is a NEW selection - mark it as active
-		_SHIFT_SELECT_ACTIVE_SELECTION="$mouse_sel"
+		# This is a NEW selection - mark it as active ONLY if it exists in current buffer
+		if [[ "$BUFFER" == *"$mouse_sel"* ]]; then
+			_SHIFT_SELECT_ACTIVE_SELECTION="$mouse_sel"
+		fi
 		_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
 	fi
 	
@@ -327,8 +329,10 @@ function shift-select::bracketed-paste-replace() {
 		
 		# Check if PRIMARY has changed (new selection was made)
 		if [[ -n "$mouse_sel" && "$mouse_sel" != "$_SHIFT_SELECT_LAST_PRIMARY" ]]; then
-			# This is a NEW selection - mark it as active
-			_SHIFT_SELECT_ACTIVE_SELECTION="$mouse_sel"
+			# This is a NEW selection - mark it as active ONLY if it exists in current buffer
+			if [[ "$BUFFER" == *"$mouse_sel"* ]]; then
+				_SHIFT_SELECT_ACTIVE_SELECTION="$mouse_sel"
+			fi
 			_SHIFT_SELECT_LAST_PRIMARY="$mouse_sel"
 		fi
 		
@@ -346,8 +350,10 @@ function shift-select::bracketed-paste-replace() {
 	# Now perform the default bracketed paste at the current cursor position
 	zle .bracketed-paste
 	
-	# Update buffer tracking after paste
+	# Update buffer tracking and clear active selection after paste
 	_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
+	# Clear active selection to prevent replacement after pasting
+	_SHIFT_SELECT_ACTIVE_SELECTION=""
 }
 zle -N shift-select::bracketed-paste-replace
 
@@ -371,8 +377,10 @@ function shift-select::paste-clipboard() {
 		LBUFFER="${LBUFFER}${clipboard_content}"
 	fi
 	
-	# Update buffer tracking after paste
+	# Update buffer tracking and clear active selection after paste
 	_SHIFT_SELECT_LAST_BUFFER="$BUFFER"
+	# Clear active selection to prevent replacement after pasting
+	_SHIFT_SELECT_ACTIVE_SELECTION=""
 }
 zle -N shift-select::paste-clipboard
 
