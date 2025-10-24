@@ -1,72 +1,33 @@
 # vim: set ts=4:
 # Copyright 2022-present Jakub Jirutka <jakub@jirutka.cz>.
-# Copyright 2024-present Michael Matta.
+# Copyright 2025-present Michael Matta.
 # SPDX-License-Identifier: MIT
+#
+# Minimal X11-only version (wizard and Wayland support removed)
 #
 # Emacs shift-select mode for Zsh - select text in the command line using Shift
 # as in many text editors, browsers and other GUI programs.
 #
-# This is the main plugin file containing only the core functionality:
-# - Clipboard integration (Wayland/X11)
+# Core functionality:
+# - X11 clipboard integration (xclip)
 # - Shift-select text selection mode
 # - Mouse selection support
 # - Cut/Copy/Paste operations
 # - Keybinding management
 #
-# The configuration wizard is kept separate in zselect-wizard.zsh and is
-# loaded on-demand when the user runs 'zselect conf'.
-#
 # Version: 0.2.5
 # Homepage: <https://github.com/Michael-Matta1/zsh-shift-select>
 # Original: <https://github.com/jirutka/zsh-shift-select>
 
-# Detect clipboard tool based on display server
-typeset -g _SHIFT_SELECT_CLIPBOARD_CMD
-typeset -g _SHIFT_SELECT_PRIMARY_CMD
+# Internal state variables for tracking selections
 typeset -g _SHIFT_SELECT_LAST_PRIMARY=""
 typeset -g _SHIFT_SELECT_ACTIVE_SELECTION=""
 typeset -g _SHIFT_SELECT_LAST_BUFFER=""
 
-# Configuration file path
-typeset -g _SHIFT_SELECT_CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/zsh-shift-select/config"
-
-# Store the directory where this plugin is located (for lazy-loading the wizard)
-typeset -g _SHIFT_SELECT_PLUGIN_DIR="${0:A:h}"
-
-# Load user configuration if it exists
-function shift-select::load-config() {
-	if [[ -f "$_SHIFT_SELECT_CONFIG_FILE" ]]; then
-		source "$_SHIFT_SELECT_CONFIG_FILE"
-	fi
-}
-
-function shift-select::detect-clipboard() {
-	if command -v wl-copy &>/dev/null && [[ -n "$WAYLAND_DISPLAY" ]]; then
-		# Wayland
-		_SHIFT_SELECT_CLIPBOARD_CMD="wl-copy"
-		_SHIFT_SELECT_PRIMARY_CMD="wl-paste --primary"
-	elif command -v xclip &>/dev/null && [[ -n "$DISPLAY" ]]; then
-		# X11
-		_SHIFT_SELECT_CLIPBOARD_CMD="xclip -selection clipboard"
-		_SHIFT_SELECT_PRIMARY_CMD="xclip -selection primary -o"
-	else
-		# Fallback: no clipboard support
-		_SHIFT_SELECT_CLIPBOARD_CMD=""
-		_SHIFT_SELECT_PRIMARY_CMD=""
-	fi
-}
-
 # Get text from primary selection (mouse selection)
 function shift-select::get-primary() {
-	if [[ -z "$_SHIFT_SELECT_PRIMARY_CMD" ]]; then
-		return 1
-	fi
 	local result
-	if [[ "$_SHIFT_SELECT_PRIMARY_CMD" == wl-paste* ]]; then
-		result=$(wl-paste --primary 2>/dev/null)
-	else
-		result=$(xclip -selection primary -o 2>/dev/null)
-	fi
+	result=$(xclip -selection primary -o 2>/dev/null)
 	if [[ -n "$result" ]]; then
 		echo "$result"
 		return 0
@@ -76,15 +37,8 @@ function shift-select::get-primary() {
 
 # Get text from clipboard
 function shift-select::get-clipboard() {
-	if [[ -z "$_SHIFT_SELECT_CLIPBOARD_CMD" ]]; then
-		return 1
-	fi
 	local result
-	if [[ "$_SHIFT_SELECT_CLIPBOARD_CMD" == wl-copy* ]]; then
-		result=$(wl-paste 2>/dev/null)
-	else
-		result=$(xclip -selection clipboard -o 2>/dev/null)
-	fi
+	result=$(xclip -selection clipboard -o 2>/dev/null)
 	if [[ -n "$result" ]]; then
 		echo "$result"
 		return 0
@@ -95,19 +49,8 @@ function shift-select::get-clipboard() {
 # Copy text to clipboard
 function shift-select::copy-to-clipboard() {
 	local text="$1"
-	if [[ -z "$_SHIFT_SELECT_CLIPBOARD_CMD" ]]; then
-		return 1
-	fi
-	
-	if [[ "$_SHIFT_SELECT_CLIPBOARD_CMD" == wl-copy* ]]; then
-		print -rn "$text" | wl-copy
-	else
-		print -rn "$text" | xclip -selection clipboard -in
-	fi
+	print -rn "$text" | xclip -selection clipboard -in
 }
-
-# Initialize clipboard detection
-shift-select::detect-clipboard
 
 # Move cursor to the end of the buffer.
 # This is an alternative to builtin end-of-buffer-or-history.
@@ -408,9 +351,6 @@ function {
 	
 	# Override printable characters (space to ~) to replace selection instead
 	bindkey -M shift-select -R ' '-'~' shift-select::replace-selection
-	
-	# Note: Mouse selection handlers (handle-char, delete-mouse-or-backspace, bracketed-paste-replace)
-	# are bound conditionally by shift-select::apply-mouse-replacement-config() during initialization
 
 	local kcap seq seq_mac widget
 
@@ -448,122 +388,28 @@ function {
 		bindkey -M shift-select ${terminfo[$kcap]:-$seq} $widget
 	done
 	
-	# Note: Backspace in emacs keymap is bound conditionally by shift-select::apply-mouse-replacement-config()
-	# (either to shift-select::delete-mouse-or-backspace or backward-delete-char)
-	
 	# Bind Ctrl+A to select all in emacs keymap
 	bindkey -M emacs '^A' shift-select::select-all
 	
 	# Bind Ctrl+V for paste in emacs keymap
 	bindkey -M emacs '^V' shift-select::paste-clipboard
 	
-	# Also bind Ctrl+Shift+C and Ctrl+X in emacs keymap for mouse selections
+	# Bind Ctrl+Shift+C and Ctrl+X in emacs keymap for mouse selections
 	bindkey -M emacs '^[[67;6u' shift-select::copy-region
 	bindkey -M emacs '^X' shift-select::cut-region
 	
 	# Ensure Ctrl+X is bound in main keymap as well
 	bindkey '^X' shift-select::cut-region
 	
-	# Note: Bracketed paste in emacs keymap is bound conditionally by shift-select::apply-mouse-replacement-config()
-	# (either to shift-select::bracketed-paste-replace or bracketed-paste)
-	
 	# Bracketed paste in shift-select keymap always uses replace behavior
 	bindkey -M shift-select '^[[200~' shift-select::bracketed-paste-replace
 }
 
-# ==============================================================================
-# Mouse Replacement Configuration
-# ==============================================================================
-
-# Apply mouse replacement configuration based on user preference
-# This function allows enabling/disabling the mouse selection replacement feature
-function shift-select::apply-mouse-replacement-config() {
-	# Get current setting (default to enabled if not set)
-	local mode="${SHIFT_SELECT_MOUSE_REPLACEMENT:-enabled}"
-	
-	if [[ "$mode" == "enabled" ]]; then
-		# Bind mouse-related handlers in emacs keymap
-		bindkey -M emacs -R ' '-'~' shift-select::handle-char
-		bindkey -M emacs '^?' shift-select::delete-mouse-or-backspace
-		bindkey -M emacs '^[[200~' shift-select::bracketed-paste-replace
-	else
-		# Unbind mouse handlers - restore default behavior
-		# Use self-insert for printable characters (space to ~)
-		bindkey -M emacs -R ' '-'~' self-insert
-		# Restore default backspace behavior
-		bindkey -M emacs '^?' backward-delete-char
-		# Restore default bracketed paste
-		bindkey -M emacs '^[[200~' bracketed-paste
-	fi
-}
-
-# ==============================================================================
-# Configuration Wizard Command
-# ==============================================================================
-
-# The zselect command provides access to the configuration wizard.
-# The wizard is loaded on-demand from zselect-wizard.zsh when needed.
-function zselect() {
-	case "$1" in
-		conf|config)
-			# Lazy-load the configuration wizard
-			local wizard_file="$_SHIFT_SELECT_PLUGIN_DIR/zselect-wizard.zsh"
-			if [[ -f "$wizard_file" ]]; then
-				source "$wizard_file"
-				shift-select::config-wizard
-			else
-				echo "Error: Configuration wizard file not found at: $wizard_file"
-				echo "Please ensure zselect-wizard.zsh is in the same directory as the plugin."
-				return 1
-			fi
-			;;
-		*)
-			echo "zselect - zsh-shift-select plugin command"
-			echo ""
-			echo "Usage: zselect <subcommand>"
-			echo ""
-			echo "Subcommands:"
-			echo "  conf, config    Open the interactive configuration wizard"
-			echo ""
-			;;
-	esac
-}
-
-# ==============================================================================
-# Plugin Initialization
-# ==============================================================================
-
-# Initialize clipboard detection
-shift-select::detect-clipboard
-
-# Load user configuration if it exists
-shift-select::load-config
-
-# Apply user's clipboard preference if set
-if [[ -n "$SHIFT_SELECT_CLIPBOARD_TYPE" ]]; then
-	case "$SHIFT_SELECT_CLIPBOARD_TYPE" in
-		wayland)
-			_SHIFT_SELECT_CLIPBOARD_CMD="wl-copy"
-			_SHIFT_SELECT_PRIMARY_CMD="wl-paste --primary"
-			if ! command -v wl-copy &>/dev/null; then
-				echo "Warning: wl-copy not found. Falling back to auto-detect."
-				shift-select::detect-clipboard
-			fi
-			;;
-		x11)
-			_SHIFT_SELECT_CLIPBOARD_CMD="xclip -selection clipboard"
-			_SHIFT_SELECT_PRIMARY_CMD="xclip -selection primary -o"
-			if ! command -v xclip &>/dev/null; then
-				echo "Warning: xclip not found. Falling back to auto-detect."
-				shift-select::detect-clipboard
-			fi
-			;;
-		# auto is already handled by the initial detect-clipboard call
-	esac
-fi
-
-# Apply mouse replacement configuration (enabled by default)
-shift-select::apply-mouse-replacement-config
+# Mouse replacement is enabled by default for X11 clipboard integration
+# Bind mouse-related handlers in emacs keymap
+bindkey -M emacs -R ' '-'~' shift-select::handle-char
+bindkey -M emacs '^?' shift-select::delete-mouse-or-backspace
+bindkey -M emacs '^[[200~' shift-select::bracketed-paste-replace
 
 # Register the ZLE hook for tracking active selections
 autoload -Uz add-zle-hook-widget

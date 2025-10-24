@@ -1,6 +1,8 @@
-# Zsh Shift Select Mode
+# Zsh Shift Select Mode (Minimal X11-Only Version)
 
-Emacs [shift-select mode](https://www.gnu.org/software/emacs/manual/html_node/emacs/Shift-Selection.html) for Zsh — select text in the command line using Shift as in many text editors, browsers and other GUI programs. Features **full editor-like experience** with type-to-replace, paste-replace, and seamless **mouse selection integration** that works alongside keyboard
+Emacs [shift-select mode](https://www.gnu.org/software/emacs/manual/html_node/emacs/Shift-Selection.html) for Zsh — select text in the command line using Shift as in many text editors, browsers and other GUI programs. Features **full editor-like experience** with type-to-replace, paste-replace, and seamless **mouse selection integration** that works alongside keyboard selection.
+
+**This is the minimal X11-only version** with simplified codebase focused exclusively on X11 clipboard integration using `xclip`. All configuration wizard and Wayland support have been removed for a lightweight, zero-configuration experience.
 
 ![Demo](media/demo.gif)
 
@@ -11,7 +13,6 @@ Emacs [shift-select mode](https://www.gnu.org/software/emacs/manual/html_node/em
 -   [Overview](#overview)
 -   [Features](#features)
 -   [Installation](#installation)
--   [Configuration Wizard](#configuration-wizard)
 -   [Default Key Bindings](#default-key-bindings)
 -   [Clipboard Integration](#clipboard-integration)
 -   [Terminal Compatibility](#terminal-compatibility)
@@ -28,23 +29,22 @@ This plugin brings familiar text selection behavior to your Zsh command line. Se
 -   **Only binds shifted keys**: Preserves all your existing keybindings
 -   **Automatic keymap switching**: Seamlessly switches between `main` and `shift-select` keymaps
 -   **Plugin-friendly**: Works perfectly with [zsh-autosuggestions](https://github.com/zsh-users/zsh-autosuggestions) and other popular plugins
--   **Zero configuration**: Automatically detects your display server (Wayland/X11) and uses appropriate clipboard tools
+-   **Zero configuration**: Simple X11 clipboard integration with no setup required
 
 ---
 
 ## Features
 
-### Multi-Display Server Support
+### X11 Clipboard Support
 
-The plugin **automatically detects** your display server and uses the appropriate clipboard tool:
+This minimal version uses **X11 clipboard integration** exclusively via `xclip`:
 
-| Display Server   | Clipboard Tool           | Status                                 |
-| ---------------- | ------------------------ | -------------------------------------- |
-| **Wayland**      | `wl-copy` and `wl-paste` | ✅ Auto-detected                       |
-| **X11**          | `xclip`                  | ✅ Auto-detected                       |
-| **No clipboard** | N/A                      | ⚠️ Selection works, clipboard disabled |
+| Display Server | Clipboard Tool | Status                                 |
+| -------------- | -------------- | -------------------------------------- |
+| **X11**        | `xclip`        | ✅ Default (requires xclip installed)  |
+| **No xclip**   | N/A            | ⚠️ Selection works, clipboard disabled |
 
-**No configuration needed** — it just works!
+**Simple and reliable** — just install `xclip` and you're ready to go!
 
 ### Text Selection
 
@@ -88,6 +88,21 @@ Works with both keyboard and mouse selections!
 ---
 
 ## Installation
+
+### Prerequisites
+
+Install `xclip` for X11 clipboard support:
+
+```sh
+# Debian/Ubuntu
+sudo apt install xclip
+
+# Arch Linux
+sudo pacman -S xclip
+
+# Fedora
+sudo dnf install xclip
+```
 
 ### Using sheldon
 
@@ -150,149 +165,6 @@ If you use [Oh My Zsh](https://github.com/ohmyzsh/ohmyzsh) framework:
 
 ---
 
-## Configuration Wizard
-
-This plugin includes an **interactive configuration wizard** that allows you to customize the plugin behavior without editing configuration files manually.
-
-### Launching the Configuration Wizard
-
-To open the configuration wizard, run:
-
-```sh
-zselect conf
-```
-
-You'll see the following menu:
-
-```
-╔════════════════════════════════════════════════════════════════╗
-║         ZSH Shift-Select Configuration Wizard                  ║
-╚════════════════════════════════════════════════════════════════╝
-
-Current Configuration:
-  Clipboard Integration: auto-detect
-  Mouse Replacement:     enabled
-
-Available Options:
-  1) Configure Clipboard Integration
-  2) Configure Mouse Replacement
-  3) Configure Key Bindings
-  4) Reset to Default Configuration
-  5) View Current Configuration
-  6) Exit
-
-Select an option (1-6):
-```
-
-### Configuration Options
-
-#### 1. Clipboard Integration
-
-Configure which clipboard backend to use:
-
--   **Wayland** (`wl-copy`/`wl-paste`) — For Wayland display servers
--   **X11** (`xclip`) — For X11 display servers
--   **Auto-detect** (recommended) — Automatically detects your display server
-
-The plugin will warn you if the required tool is not installed.
-
-#### 2. Mouse Replacement
-
-Enable or disable the mouse selection replacement feature:
-
--   **Enabled** (default) — Type to replace mouse-selected text
--   **Disabled** — Mouse selections won't be replaced when typing
-
-When enabled, you can select text with your mouse and immediately type to replace it, or press Backspace to delete it.
-
-#### 3. Configure Key Bindings
-
-Customize the keybindings for Select All, Paste, and Cut actions. Each action offers:
-
--   **Preset options** — Quick selection of common keybindings
--   **Advanced option** — Manually enter custom key sequences
-
-##### Select All
-
--   **Ctrl + A** (`^A`) — Default
--   **Ctrl + Shift + A** (`^[[65;6u`)
--   **Advanced Option** — Enter custom keybinding
-
-##### Paste
-
--   **Ctrl + V** (`^V`) — Default
--   **Ctrl + Shift + V** (`^[[86;6u`)
--   **Advanced Option** — Enter custom keybinding
-
-##### Cut
-
--   **Ctrl + X** (`^X`) — Default
--   **Ctrl + Shift + X** (`^[[88;6u`)
--   **Advanced Option** — Enter custom keybinding
-
-##### Reset to Default Keybindings
-
-Restore all keybindings to their default values (Ctrl+A, Ctrl+V, Ctrl+X).
-
-##### Custom Keybinding Notes
-
-> **⚠️ Important:** When using custom keybindings (especially with Shift modifiers), you may need to configure your terminal emulator to send the correct escape sequences.
-
-**For Kitty:**
-
-If you want to use `Ctrl + Shift + X` for cut, add this to your `kitty.conf`:
-
-```conf
-map ctrl+shift+x send_text all \x1b[88;6u
-```
-
-**For Other Terminals:**
-
--   **WezTerm** — Use similar key remapping in `wezterm.lua`
--   **Alacritty** — Use key bindings in `alacritty.yml`
--   **VS Code Terminal** — Add to `keybindings.json` (see [VS Code section](#vs-code))
-
-**Verifying Key Sequences:**
-
-Different terminal emulators or operating systems may produce different control key sequences. To verify what your terminal sends:
-
-1. Run `cat` (without arguments) in your terminal
-2. Press the key combination you want to use
-3. Copy the displayed escape sequence
-4. Use that sequence in the Advanced Option when configuring keybindings
-
-For example, if your terminal displays `^[[88;6u` when you press Ctrl+Shift+X, use that exact sequence in the configuration.
-
-#### 4. Reset to Default Configuration
-
-Completely reset the plugin to its default state:
-
--   Removes custom configuration file
--   Resets clipboard integration to auto-detect
--   Resets mouse replacement to enabled
--   Restores default keybindings
-
-#### 5. View Current Configuration
-
-Display all active settings, including:
-
--   Clipboard integration type and detected commands
--   Mouse replacement status
--   Current keybindings for Select All, Paste, and Cut
--   Configuration file location
-
-### Configuration Storage
-
-All settings are stored in:
-
-```
-~/.config/zsh-shift-select/config
-```
-
-Changes take effect immediately and persist across shell sessions.
-
----
-
 ## Default Key Bindings
 
 ### Selection Keys
@@ -346,39 +218,7 @@ Keys defined only in the `shift-select` keymap:
 
 ## Clipboard Integration
 
-This plugin includes **automatic clipboard integration** that works with both Wayland and X11.
-
-### Prerequisites
-
-Install the appropriate clipboard tool for your display server:
-
-#### For Wayland
-
-```sh
-# Debian/Ubuntu
-sudo apt install wl-clipboard
-
-# Arch Linux
-sudo pacman -S wl-clipboard
-
-# Fedora
-sudo dnf install wl-clipboard
-```
-
-#### For X11
-
-```sh
-# Debian/Ubuntu
-sudo apt install xclip
-
-# Arch Linux
-sudo pacman -S xclip
-
-# Fedora
-sudo dnf install xclip
-```
-
-The plugin will automatically detect which display server you're using and use the appropriate tool. If neither is available, the plugin will still work for text selection, but clipboard operations will be disabled.
+This minimal version uses X11 clipboard integration via `xclip`. If `xclip` is not installed, the plugin will still work for text selection, but clipboard operations (copy/paste) will be disabled.
 
 ### Using Ctrl+Shift+C (Default)
 
