@@ -22,6 +22,8 @@ Emacs [shift-select mode](https://www.gnu.org/software/emacs/manual/html_node/em
 
 This plugin brings familiar text selection behavior to your Zsh command line. Select text using **Shift + Arrow keys** just like you would in any GUI text editor, then type to replace, or copy/cut to clipboard.
 
+> **Ready to Use:** The plugin works out of the box with its default options once installed. You may need to restart your terminal or reload your `.zshrc` file (`source ~/.zshrc`) for the changes to take effect. If you want to customize the plugin's behavior (clipboard integration, mouse replacement, key bindings), you can use the [Configuration Wizard](#configuration-wizard) by running `zselect conf`.
+
 ### Key Design Principles
 
 -   **Non-invasive**: Does not override any existing widgets
@@ -448,6 +450,8 @@ bindkey '^K' x-copy-selection
 ## Terminal Compatibility
 
 Some keys may not work in your terminal by default. To check compatibility, run `cat` (without arguments) in your terminal and press the key sequence in question. If nothing is printed, your terminal or operating system has intercepted the key sequence.
+
+> **Testing Status:** This plugin has been thoroughly tested on **Kitty Terminal** and **X11 environments** and works reliably in these setups. If you experience any unexpected behavior on other terminals or systems, please [open an issue](https://github.com/Michael-Matta1/zsh-shift-select/issues) on the repository with details about your terminal emulator, operating system, and display server.
 
 ### Tested Terminals
 

@@ -1,6 +1,6 @@
 # vim: set ts=4:
 # Copyright 2022-present Jakub Jirutka <jakub@jirutka.cz>.
-# Copyright 2024-present Michael Matta.
+# Copyright 2025-present Michael Matta.
 # SPDX-License-Identifier: MIT
 #
 # Configuration Wizard for zsh-shift-select
